@@ -12,3 +12,4 @@ cf-err.txt
 cf-out.txt
 cloudflared.exe
 uploads/
+backend/uploads/
