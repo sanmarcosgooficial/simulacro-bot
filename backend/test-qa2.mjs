@@ -116,6 +116,14 @@ check('detectYesOrNo: pregunta sin sí/no → null', yn3 === null, `→ ${yn3}`)
 const yn4 = await realClassify(() => ai.detectYesOrNo('sí, ¿es virtual?'));
 check('detectYesOrNo: "sí, ¿es virtual?" NO es "no"', yn4 !== false, `→ ${yn4}`);
 
+// ══ 4. detectCareer (IA): frases que el mapa de palabras no capta ══
+const dc1 = await realClassify(() => ai.detectCareer('mi hijo quiere postular a ing civil'));
+check('detectCareer IA: "ing civil" → Ingeniería', /ingenier/i.test(dc1 || ''), `→ ${dc1}`);
+const dc2 = await realClassify(() => ai.detectCareer('Piscologia'));
+check('detectCareer IA: "Piscologia" → Psicología', /sicolog/i.test(dc2 || ''), `→ ${dc2}`);
+const dc3 = await ai.detectCareer('hola, cuánto cuesta?');
+check('detectCareer IA: sin carrera → null', dc3 === null, `→ ${dc3}`);
+
 console.log('\n════════════════════════════════════════');
 console.log(`RESULTADO: ${pass} ✅ / ${fail} ❌`);
 console.log(results.join('\n'));

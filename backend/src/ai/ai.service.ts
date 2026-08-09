@@ -126,6 +126,15 @@ export class AiService implements OnModuleInit {
       funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez. Responde con el saludo "${greet}" (según la hora de Perú) en el primer mensaje y en el segundo (separado con ||) pregúntale qué carrera postula. Formato recomendado: "${greet} 😊||¿A qué carrera postulas?" (puedes variar las palabras, pero incluye SIEMPRE el saludo y la pregunta de carrera). Si el cliente preguntó algo específico además del saludo, respóndelo brevemente en el primer mensaje antes del ||.`;
     } else if (stage === 'sin_carrera') {
       funnelInstruction = `ETAPA ACTUAL: El bot YA saludó y preguntó la carrera, pero el cliente aún no la dice. NO vuelvas a saludar ni repitas el saludo (ni "Buenos días/tardes/noches" ni "Hola"). Si el cliente preguntó algo (precio, modalidad, horario, etc.), respóndele en UNA línea breve y luego pregúntale naturalmente qué carrera postula (ej. "¿A qué carrera postulas? 😊" — varía las palabras). Si no preguntó nada, solo pregúntale la carrera en una línea. Máximo 2 mensajes cortos, y NUNCA incluyas saludos.`;
+    } else if (stage === 'libre') {
+      funnelInstruction = `ETAPA ACTUAL: Tú manejas TODA la conversación de ventas de principio a fin, con libertad y naturalidad, siguiendo el GUION OFICIAL (el orden de los pasos importa, las palabras no).- Si aún no sabes la carrera del cliente: pregúntala con naturalidad.
+      - Cuando la diga: SIEMPRE repite el nombre de la carrera tal como la dijo el cliente (o su forma correcta) al empezar tu respuesta, y elógiala con UNA línea corta y genuina. Ej: cliente dice "enfermeria" → "¡Uff, enfermería! Una carrera muy noble...". NUNCA respondas sobre la carrera sin decir su nombre.
+- Luego preséntale el valor del simulacro (paso 3) y agrega la línea [FLYER] al final de tu respuesta para que el sistema envíe la imagen del flyer.
+- Después pregúntale si se atreve a ponerse a prueba (paso 3) y, si acepta, qué horario le acomoda (paso 4, usa los SIMULACROS DISPONIBLES).
+- Cuando elija horario: confirma el pago con el Yape exacto (paso 5) y agrega la línea [PAGO] al final de tu respuesta.
+- NUNCA muestres el precio antes de que el cliente elija horario. NUNCA repitas una pregunta ya respondida ni vuelvas a saludar. Si no sabes algo, responde "En un momento te respondo, déjame verificar 😊" y continúa con el flujo.`;
+    } else if (stage === 'inscrito') {
+      funnelInstruction = `ETAPA ACTUAL: El cliente ya se inscribió y pagó. Sé breve, cálido y agradecido, confirma que está inscrito y resuelve dudas. No intentes venderle de nuevo.`;
     } else if (stage === 'tiene_carrera') {
       funnelInstruction = `ETAPA ACTUAL: Ya sabemos que postula a ${contactContext?.career}. Si pregunta algo sobre el simulacro, respóndele y luego pregúntale si es su primera vez postulando o ya tiene experiencia.`;
     } else if (stage === 'tiene_experiencia') {
@@ -185,7 +194,10 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
 - NUNCA preguntes la carrera (el flujo la captura solo).
 - Si el cliente pregunta algo fuera del flujo (precio, horario, virtual, etc.), respóndelo en UNA línea breve y retoma el siguiente paso del guion.
 - Si el cliente se desvía, vuelve con naturalidad al paso que corresponde del guion, sin repetir preguntas ya respondidas.
+- Si el cliente pregunta algo que no sabes (fechas futuras, precios especiales, detalles técnicos, etc.), responde: "En un momento te respondo, déjame verificar 😊" y continúa con el flujo normal.
+- Marcadores de acción (el sistema los procesa, NUNCA los ve el cliente): cuando tu respuesta requiera que el sistema haga algo, agrega UNA línea al final con [FLYER] para que envíe la imagen del simulacro, o [PAGO] cuando ya le diste los datos de pago y esperas su comprobante.
 - Si mencionas el simulacro, llámalo siempre "San Marcos Las Fijas".
+- NUNCA digas que vas a compartir el flyer ni prometas enviar imágenes: el sistema las envía automáticamente cuando corresponde.
 - NUNCA menciones horarios en formato técnico como "10:00 a 13:00", usa solo "de 10 a 1" o "de 5 a 8".
 - Si no sabes algo, di "ya lo consulto y te aviso".
 - Nunca digas que eres un bot ni un asistente virtual.`;
@@ -220,9 +232,17 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
     try {
       const systemPrompt = await this.buildSystemPrompt(contactContext);
 
+      // Contexto completo: las últimas 40 interacciones para que la IA NUNCA olvide
+      // lo que ya se habló (carrera, experiencia, horario elegido, etc.)
+      let recentHistory = conversationHistory.slice(-40);
+      // Evitar duplicar el mensaje actual (ya viene al final del historial)
+      if (recentHistory.length > 0 && recentHistory[recentHistory.length - 1].content === userMessage) {
+        recentHistory = recentHistory.slice(0, -1);
+      }
+
       messages = [
         { role: 'system' as const, content: systemPrompt },
-        ...conversationHistory.slice(-10).map((m) => ({
+        ...recentHistory.map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
         })),
@@ -342,6 +362,36 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
       if (answer.includes('SI') || answer.includes('SÍ')) return true;
       if (answer.includes('NO')) return false;
       return null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Detectar la carrera que menciona el cliente (para cuando el mapa de palabras clave falla,
+  // ej. "ing civil", "piscologia", "mi hijo postula a civil"). Retorna el nombre o null.
+  async detectCareer(text: string): Promise<string | null> {
+    const apiKey = this.config.get('OPENAI_API_KEY', '');
+    if (!this.isConfigured(apiKey)) return null;
+    try {
+      const res = await this.client.chat.completions.create({
+        model: this.getClassifierModel(),
+        messages: [
+          { role: 'system', content: 'Eres un extractor de carreras universitarias. Un cliente de un simulacro de admisión a la UNMSM (San Marcos) menciona la carrera a la que postula. Extrae SOLO el nombre de la carrera en singular y sin área académica (ej. "Medicina", "Derecho", "Ingeniería Civil", "Psicología", "Contabilidad", "Enfermería"). Si el mensaje NO menciona ninguna carrera, responde exactamente DESCONOCIDO. Responde solo con el nombre, sin puntos ni comillas.' },
+          { role: 'user', content: text },
+        ],
+        max_tokens: 50,
+        temperature: 0,
+      });
+      const answer = res.choices[0]?.message?.content?.trim() || '';
+      if (!answer || /desconocido/i.test(answer)) return null;
+      // Limpiar y capitalizar el nombre de la carrera
+      const clean = answer.replace(/[.,;!?]+$/g, '').trim();
+      if (!clean) return null;
+      const capitalized = clean
+        .split(' ')
+        .map((w) => (w.charAt(0).toUpperCase() + w.slice(1)))
+        .join(' ');
+      return capitalized;
     } catch {
       return null;
     }
