@@ -373,7 +373,7 @@ export default function SimulacrosPage() {
                   <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
                     <span className="flex items-center gap-1">
                       <Calendar size={13} />
-                      {sim.date}
+                      {(() => { const [y,m,d] = sim.date.split('-'); return `${d}/${m}/${y.slice(2)}`; })()}
                     </span>
                     {sim.schedules?.length > 0 ? (
                       <span className="flex items-center gap-1">

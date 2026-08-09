@@ -8,7 +8,7 @@ import {
   getStatusLabel,
   getStatusColor,
 } from '@/lib/utils';
-import { MessageSquare, Bot, BotOff, Search, User } from 'lucide-react';
+import { MessageSquare, Bot, BotOff, Search, User, ArrowLeft } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -93,8 +93,11 @@ export default function ConversationsPage() {
     }
   }, []);
 
+  const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+
   const handleSelectConv = async (conv: Conversation) => {
     setSelectedConv(conv);
+    setMobileView('chat');
     setContact(null);
     loadMessages(conv.id);
     conversationsApi.markAsRead(conv.id);
@@ -145,7 +148,7 @@ export default function ConversationsPage() {
   return (
     <div className="flex h-full">
       {/* Lista de conversaciones */}
-      <div className="w-72 flex-shrink-0 border-r border-gray-100 bg-white flex flex-col">
+      <div className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-72 flex-shrink-0 border-r border-gray-100 bg-white flex-col`}>
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-900">Conversaciones</h2>
@@ -223,17 +226,20 @@ export default function ConversationsPage() {
 
       {/* Panel de mensajes */}
       {!selectedConv ? (
-        <div className="flex-1 flex items-center justify-center bg-gray-50 text-gray-400">
+        <div className="hidden md:flex flex-1 items-center justify-center bg-gray-50 text-gray-400">
           <div className="text-center">
             <MessageSquare size={48} className="mx-auto mb-3 opacity-20" />
             <p className="text-sm">Selecciona una conversación</p>
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className={`${mobileView === 'list' ? 'hidden' : 'flex'} md:flex flex-1 flex-col min-w-0`}>
           {/* Header del chat */}
           <div className="bg-white border-b border-gray-100 px-5 py-3.5 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3">
+              <button onClick={() => setMobileView('list')} className="md:hidden text-gray-400 hover:text-gray-700 mr-1">
+                <ArrowLeft size={20} />
+              </button>
               <div className="w-9 h-9 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">
                 {(selectedConv.contactName || selectedConv.phone)?.[0]?.toUpperCase()}
               </div>
@@ -311,8 +317,8 @@ export default function ConversationsPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Panel de contacto */}
-            <div className="w-64 flex-shrink-0 border-l border-gray-100 bg-white p-4 overflow-y-auto">
+            {/* Panel de contacto - solo desktop */}
+            <div className="hidden md:block w-64 flex-shrink-0 border-l border-gray-100 bg-white p-4 overflow-y-auto">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                 Información
               </h3>
