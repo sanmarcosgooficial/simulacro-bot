@@ -90,6 +90,16 @@ export class WebhooksService {
       this.pendingMessages.set(phone, pending);
     }
 
+    // Tiempo de lectura: apenas llega el primer mensaje del cliente (y no hay
+    // debounce activo), mostramos el indicador "escribiendo..." para que el
+    // cliente sepa que el bot está leyendo mientras espera sus mensajes por
+    // partes (ej. "ok" + "enviado" + "me envía la información por favor").
+    const isFirstInWindow = !this.debounceTimers.has(phone);
+    if (isFirstInWindow && messageId) {
+      try { await this.ycloud.sendTypingIndicator(phone, messageId); }
+      catch (e) { this.logger.warn('Typing indicator no enviado: ' + e.message); }
+    }
+
     // Capturar el stage ANTES del debounce para que mensajes múltiples
     // no confundan la etapa (el primero no debe avanzar antes de que el último procese)
     if (!(this as any)._stageSnapshot) (this as any)._stageSnapshot = {};
@@ -232,17 +242,14 @@ export class WebhooksService {
 
       switch (effectiveStage) {
 
-        // ETAPA 0: cliente nuevo → SOLO responde si viene del anuncio de Meta
-        // (mensaje del tipo "Hola, quiero probarme en el Simulacro de San Marcos ⚕️!")
+        // ETAPA 0: cliente nuevo → responde a CUALQUIER mensaje de consulta
+        // (venga del anuncio de Meta o sea una consulta normal: "hola",
+        // "cuánto cuesta", "info del simulacro"...). La IA abre la conversación:
+        // si es el anuncio saluda y pregunta la carrera; si es una consulta,
+        // la responde brevemente y luego lleva la conversación al guion.
         case ConversationStage.NUEVA: {
-          if (!isAdMessage) {
-            // Mensaje que no viene del anuncio → ignorar silenciosamente
-            this.logger.log(`[SKIP] Contacto nuevo sin mensaje de anuncio: "${combinedText.substring(0, 50)}"`);
-            return;
-          }
-          // La IA abre la conversación: saluda según la hora de Perú y pregunta la carrera
           const aiReply = await this.ai.processMessage(combinedText, history as any, phone, {
-            name: contact.name, funnelStage: 'inicio', greeting: this.getGreeting(),
+            name: contact.name, funnelStage: 'inicio', greeting: this.getGreeting(), isAdMessage,
           });
           if (aiReply && !aiReply.includes('Soy el asesor de Simulacros San Marcos')) {
             await this.sendSplitReply(conversation.id, phone, aiReply);

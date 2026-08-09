@@ -71,6 +71,7 @@ export class AiService implements OnModuleInit {
       const fmt12 = (h: number) => h > 12 ? h - 12 : h;
 
       simulacrosText = activeSimulacros
+        .filter((sim) => sim.date >= todayStr) // nunca ofrecer simulacros de fechas pasadas
         .map((sim) => {
           const isToday = sim.date === todayStr;
           const isTomorrow = sim.date === tomorrowStr;
@@ -131,6 +132,7 @@ export class AiService implements OnModuleInit {
       - Cuando la diga: SIEMPRE repite el nombre de la carrera tal como la dijo el cliente (o su forma correcta) al empezar tu respuesta, y elógiala con UNA línea corta y genuina. Ej: cliente dice "enfermeria" → "¡Uff, enfermería! Una carrera muy noble...". NUNCA respondas sobre la carrera sin decir su nombre.
 - Luego preséntale el valor del simulacro (paso 3) y agrega la línea [FLYER] al final de tu respuesta para que el sistema envíe la imagen del flyer.
 - Después pregúntale si se atreve a ponerse a prueba (paso 3) y, si acepta, qué horario le acomoda (paso 4, usa los SIMULACROS DISPONIBLES).
+      - SELECCIÓN DE SIMULACRO: ofrece SIEMPRE el siguiente disponible que aparezca en SIMULACROS DISPONIBLES (el primero de la lista). Si el simulacro de hoy ya se usó, ya pasó la hora o no tiene horarios libres, ofrece el siguiente (ej. el de mañana o el próximo día programado, como el 10 de agosto). NUNCA ofrezcas un simulacro de fecha pasada ni inventes fechas.
 - Cuando elija horario: confirma el pago con el Yape exacto (paso 5) y agrega la línea [PAGO] al final de tu respuesta.
 - NUNCA muestres el precio antes de que el cliente elija horario. NUNCA repitas una pregunta ya respondida ni vuelvas a saludar. Si no sabes algo, responde "En un momento te respondo, déjame verificar 😊" y continúa con el flujo.`;
     } else if (stage === 'inscrito') {
@@ -189,7 +191,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
 - Responde SIEMPRE con el texto final natural que ve el cliente. NUNCA incluyas notas internas, planes, pasos numerados, asteriscos, comillas ni texto entre símbolos (*, «», >). Si piensas en pasos, no los escribas: envía solo los mensajes finales.
 - Sigue el GUION OFICIAL en orden: NUNCA saltes pasos ni cambies el orden de las preguntas.
 - NUNCA muestres el precio antes de que el cliente elija horario (paso 5).
-- NUNCA inventes precios, fechas, horarios ni descuentos.
+- NUNCA inventes precios, fechas, horarios ni descuentos. PERO los SIMULACROS DISPONIBLES de arriba son datos REALES del sistema: si el cliente pregunta qué día/hora es el simulacro, respóndele CON CONFIANZA usando esos datos (ej. "mañana", "el 10 de agosto", "de 5 a 8"). La regla "En un momento te respondo" aplica SOLO a información que NO está en tu contexto.
 - NUNCA menciones el nombre del área ni el área académica.
 - NUNCA preguntes la carrera (el flujo la captura solo).
 - Si el cliente pregunta algo fuera del flujo (precio, horario, virtual, etc.), respóndelo en UNA línea breve y retoma el siguiente paso del guion.
