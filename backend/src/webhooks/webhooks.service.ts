@@ -21,6 +21,8 @@ export class WebhooksService {
   private readonly lastMessageId = new Map<string, string>();
   // Acumular todos los mensajes del periodo de debounce por teléfono
   private readonly pendingMessages = new Map<string, string[]>();
+  // IDs de mensajes ya procesados (YCloud a veces reenvía el mismo webhook)
+  private readonly processedMessageIds = new Set<string>();
 
   constructor(
     private readonly conversations: ConversationsService,
@@ -63,6 +65,20 @@ export class WebhooksService {
     const textContent = messageData.text?.body || '';
     const mediaUrl = messageData.image?.link || messageData.document?.link || null;
     const messageId = messageData.id || '';
+
+    // Ignorar re-entregas del mismo mensaje (YCloud puede reenviar el mismo webhook)
+    if (messageId && this.processedMessageIds.has(messageId)) {
+      this.logger.log(`Mensaje duplicado ignorado (${messageId})`);
+      return;
+    }
+    if (messageId) {
+      this.processedMessageIds.add(messageId);
+      // Evitar que el set crezca sin límite en memoria
+      if (this.processedMessageIds.size > 1000) {
+        const first = this.processedMessageIds.values().next().value;
+        this.processedMessageIds.delete(first);
+      }
+    }
 
     // Guardar el último messageId para usarlo en el typing indicator
     this.lastMessageId.set(phone, messageId);
@@ -185,22 +201,34 @@ export class WebhooksService {
       // ── MÁQUINA DE ESTADOS ────────────────────────────────────────────────
       const history = await this.conversations.getChatHistory(conversation.id, 10);
 
-      switch (stage) {
+      // Detección estricta del mensaje del anuncio:
+      // "Hola, quiero probarme en el Simulacro de San Marcos ⚕️!" — el mensaje
+      // DEBE contener "quiero probarme" + "simulacro"/"san marcos".
+      const tLower = combinedText.toLowerCase();
+      const isAdMessage = tLower.includes('quiero probarme') && /simulacro|san marcos/.test(tLower);
+
+      // Si llega el mensaje del anuncio con la conversación estancada en el inicio
+      // (etapa SALUDADA/CON_CARRERA sin avanzar), reiniciamos el flujo para empezar
+      // de cero y evitar que el saludo se repita infinitamente.
+      let effectiveStage = stage;
+      if (isAdMessage && (stage === ConversationStage.SALUDADA || stage === ConversationStage.CON_CARRERA)) {
+        this.logger.log(`[RESTART] Mensaje de anuncio en etapa ${stage} → reiniciando flujo para ${phone}`);
+        await this.conversations.setStage(conversation.id, ConversationStage.NUEVA);
+        effectiveStage = ConversationStage.NUEVA;
+      }
+
+      switch (effectiveStage) {
 
         // ETAPA 0: cliente nuevo → SOLO responde si viene del anuncio de Meta
         // (mensaje del tipo "Hola, quiero probarme en el Simulacro de San Marcos ⚕️!")
         case ConversationStage.NUEVA: {
-          const t = combinedText.toLowerCase();
-          const isAdMessage = t.includes('quiero probarme') && /simulacro|san marcos/i.test(t);
           if (!isAdMessage) {
             // Mensaje que no viene del anuncio → ignorar silenciosamente
             this.logger.log(`[SKIP] Contacto nuevo sin mensaje de anuncio: "${combinedText.substring(0, 50)}"`);
             return;
           }
-          const greeting = this.getGreeting();
-          await this.sendAndSaveReply(conversation.id, phone, greeting);
-          await new Promise((r) => setTimeout(r, 1000));
-          await this.sendAndSaveReply(conversation.id, phone, '¿A qué carrera postulas? 😊');
+          // Primer mensaje DEFAULT (hardcodeado, NO lo genera la IA)
+          await this.sendAndSaveReply(conversation.id, phone, '¡Hola! 👋 Soy el asesor de Simulacros San Marcos. ¿Qué carrera estás postulando?');
           await this.conversations.setStage(conversation.id, ConversationStage.SALUDADA);
           await this.contacts.update(contact.id, { status: ContactStatus.INTERESADO });
           break;
@@ -220,15 +248,18 @@ export class WebhooksService {
             await this.sendAndSaveReply(conversation.id, phone, '¿Primera vez que postulas o ya tienes experiencia?');
             await this.conversations.setStage(conversation.id, ConversationStage.CON_CARRERA);
           } else {
-            // No se detectó la carrera → responder brevemente si preguntó algo y volver a pedir carrera
+            // No se detectó la carrera → responder brevemente si preguntó algo y volver a pedir carrera.
+            // IMPORTANTE: aquí la IA NO vuelve a saludar (el saludo ya se dio al iniciar la conversación),
+            // para que el mensaje nunca se repita. El bot siempre termina pidiendo la carrera una sola vez.
             const aiReply = await this.ai.processMessage(combinedText, history as any, phone, {
-              name: contact.name, funnelStage: 'inicio',
+              name: contact.name, funnelStage: 'sin_carrera',
               greeting: this.getGreeting(),
             });
-            // Solo tomar la primera parte si hay || y agregar la pregunta de carrera
-            const firstPart = aiReply.split('||')[0].trim();
+            // Solo tomar la primera parte si hay || y quitar cualquier saludo repetido
+            let firstPart = (aiReply.split('||')[0] || '').trim();
+            firstPart = firstPart.replace(/^(buenos días|buenas tardes|buenas noches|hola)[,!.:\s]*/i, '').trim() || firstPart;
             await this.sendAndSaveReply(conversation.id, phone, firstPart);
-            // Si la IA ya incluyó la pregunta de carrera (sin ||), no la repetimos
+            // Si la IA no preguntó por la carrera, la pregunta el bot (una sola vez)
             if (!/carrera|estudi|postul/i.test(firstPart)) {
               await new Promise((r) => setTimeout(r, 1000));
               await this.sendAndSaveReply(conversation.id, phone, '¿A qué carrera postulas? 😊');
@@ -465,10 +496,11 @@ export class WebhooksService {
   // Encuentra el primer simulacro con horarios disponibles y devuelve su texto.
   // Si hoy solo queda 1 horario, añade mañana como alternativa.
   private buildScheduleText(simulacros: any[]): { text: string; simDate: string } {
-    const now = new Date();
+    // Fecha y hora actuales SIEMPRE en hora de Perú (UTC-5, sin horario de verano)
+    const now = new Date(Date.now() - 5 * 3600 * 1000);
     const todayStr = now.toISOString().split('T')[0];
     const tomorrowStr = (() => { const d = new Date(now); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })();
-    const currentHour = now.getHours() + now.getMinutes() / 60;
+    const currentHour = now.getUTCHours() + now.getUTCMinutes() / 60;
 
     const getAvailable = (sim: any) => {
       const isToday = sim.date === todayStr;

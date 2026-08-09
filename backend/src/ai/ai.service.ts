@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SettingsService } from '../settings/settings.service';
 import { SimulacrosService } from '../simulacros/simulacros.service';
 import OpenAI from 'openai';
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -21,10 +22,9 @@ export class AiService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    // Google Gemini vía su endpoint compatible con OpenAI
+    // OpenAI (endpoint oficial por defecto del SDK)
     this.client = new OpenAI({
-      apiKey: this.config.get('GEMINI_API_KEY', ''),
-      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      apiKey: this.config.get('OPENAI_API_KEY', ''),
     });
   }
 
@@ -37,13 +37,13 @@ export class AiService implements OnModuleInit {
   private async getModel(): Promise<string> {
     return (
       (await this.settings.get('ai_model')) ||
-      this.config.get('GEMINI_MODEL', 'gemini-3.6-flash')
+      this.config.get('OPENAI_MODEL', 'gpt-4o-mini')
     );
   }
 
   // Modelo económico para clasificadores (SI/NO, PRIMERA/EXPERIENCIA)
   private getClassifierModel(): string {
-    return this.config.get('GEMINI_CLASSIFIER_MODEL', 'gemini-3.5-flash-lite');
+    return this.config.get('OPENAI_CLASSIFIER_MODEL', 'gpt-4o-mini');
   }
 
   // Construir el system prompt del agente
@@ -63,10 +63,11 @@ export class AiService implements OnModuleInit {
     if (activeSimulacros.length === 0) {
       simulacrosText = 'No hay simulacros programados por ahora.';
     } else {
-      const now = new Date();
+      // Fecha y hora actuales SIEMPRE en hora de Perú (UTC-5, sin horario de verano)
+      const now = new Date(Date.now() - 5 * 3600 * 1000);
       const todayStr = now.toISOString().split('T')[0];
       const tomorrowStr = (() => { const d = new Date(now); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })();
-      const currentHour = now.getHours() + now.getMinutes() / 60;
+      const currentHour = now.getUTCHours() + now.getUTCMinutes() / 60;
       const fmt12 = (h: number) => h > 12 ? h - 12 : h;
 
       simulacrosText = activeSimulacros
@@ -123,6 +124,8 @@ export class AiService implements OnModuleInit {
     if (stage === 'inicio') {
       const greet = contactContext?.greeting || 'Hola';
       funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez. Responde con el saludo "${greet}" (según la hora de Perú) en el primer mensaje y en el segundo (separado con ||) pregúntale qué carrera postula. Formato recomendado: "${greet} 😊||¿A qué carrera postulas?" (puedes variar las palabras, pero incluye SIEMPRE el saludo y la pregunta de carrera). Si el cliente preguntó algo específico además del saludo, respóndelo brevemente en el primer mensaje antes del ||.`;
+    } else if (stage === 'sin_carrera') {
+      funnelInstruction = `ETAPA ACTUAL: El bot YA saludó y preguntó la carrera, pero el cliente aún no la dice. NO vuelvas a saludar ni repitas el saludo (ni "Buenos días/tardes/noches" ni "Hola"). Si el cliente preguntó algo (precio, modalidad, horario, etc.), respóndele en UNA línea breve y luego pregúntale naturalmente qué carrera postula (ej. "¿A qué carrera postulas? 😊" — varía las palabras). Si no preguntó nada, solo pregúntale la carrera en una línea. Máximo 2 mensajes cortos, y NUNCA incluyas saludos.`;
     } else if (stage === 'tiene_carrera') {
       funnelInstruction = `ETAPA ACTUAL: Ya sabemos que postula a ${contactContext?.career}. Si pregunta algo sobre el simulacro, respóndele y luego pregúntale si es su primera vez postulando o ya tiene experiencia.`;
     } else if (stage === 'tiene_experiencia') {
@@ -203,7 +206,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
       isAdMessage?: boolean;
     },
   ): Promise<string> {
-    const apiKey = this.config.get('GEMINI_API_KEY', '');
+    const apiKey = this.config.get('OPENAI_API_KEY', '');
     const model = await this.getModel();
 
     // Sin API key → respuestas de respaldo
@@ -211,10 +214,13 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
       return this.getFallbackResponse(userMessage);
     }
 
+    // Se declara fuera del try para poder reutilizarlo en el retry (catch)
+    let messages: ChatCompletionMessageParam[] = [];
+
     try {
       const systemPrompt = await this.buildSystemPrompt(contactContext);
 
-      const messages = [
+      messages = [
         { role: 'system' as const, content: systemPrompt },
         ...conversationHistory.slice(-10).map((m) => ({
           role: m.role as 'user' | 'assistant',
@@ -234,22 +240,49 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
 
       if (!reply) return this.getFallbackResponse(userMessage);
 
-      this.logger.log(`Gemini [${model}] → ${reply.substring(0, 80)}`);
+      this.logger.log(`OpenAI [${model}] → ${reply.substring(0, 80)}`);
       return reply;
 
     } catch (error: any) {
-      this.logger.error('Error Gemini:', error?.message || error);
+      this.logger.error(`Error OpenAI [${model}]:`, error?.message || error);
 
       // Si el error es de API key inválida, indicarlo claramente en el log
       if (error?.status === 401) {
-        this.logger.error('API key de Gemini inválida. Revisa GEMINI_API_KEY en el .env');
+        this.logger.error('API key de OpenAI inválida. Revisa OPENAI_API_KEY en el .env');
+      }
+
+      // Resiliencia: si el modelo configurado falla (cuota agotada 429, sobrecarga 503, etc.),
+      // reintenta con los otros modelos OpenAI antes de caer en el respaldo. Así el bot NUNCA
+      // repite respuestas de plantilla aunque el modelo principal esté caído o con cuota agotada.
+      if (messages.length === 0) return this.getFallbackResponse(userMessage);
+
+      if (error?.status !== 401 && error?.status !== 403) {
+        const alternates = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1']
+          .filter((m) => m !== model);
+        for (const alt of alternates) {
+          try {
+            const retry = await this.client.chat.completions.create({
+              model: alt,
+              messages,
+              max_tokens: 1000,
+              temperature: 0.6,
+            });
+            const altReply = retry.choices[0]?.message?.content?.trim() || '';
+            if (altReply) {
+              this.logger.log(`OpenAI [${alt}] (respaldo tras fallo de ${model}) → ${altReply.substring(0, 80)}`);
+              return altReply;
+            }
+          } catch (e2: any) {
+            this.logger.error(`OpenAI [${alt}] falló también:`, e2?.message || e2);
+          }
+        }
       }
 
       return this.getFallbackResponse(userMessage);
     }
   }
 
-  // Respuestas de respaldo cuando no hay API key o falla Gemini
+  // Respuestas de respaldo cuando no hay API key o falla OpenAI
   private getFallbackResponse(message: string): string {
     const msg = message.toLowerCase();
 
@@ -289,7 +322,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
     const hasNo = /\bno\b|nop|mejor no|no me interesa/.test(t);
     if (!hasYes && !hasNo && /\?|¿/.test(text)) return null;
 
-    const apiKey = this.config.get('GEMINI_API_KEY', '');
+    const apiKey = this.config.get('OPENAI_API_KEY', '');
     if (!this.isConfigured(apiKey)) {
       if (t.includes('sí') || t.includes('si') || t.includes('dale') || t.includes('claro') || t.includes('quiero') || t.includes('ya')) return true;
       if (t.includes('no') || t.includes('nop') || t.includes('mejor no')) return false;
@@ -299,7 +332,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
       const res = await this.client.chat.completions.create({
         model: this.getClassifierModel(),
         messages: [
-          { role: 'system', content: 'Eres un clasificador. El usuario responde si quiere o no quiere participar/inscribirse en algo. Responde SOLO con: SI, NO, o DESCONOCIDO. Reglas: si el mensaje es una pregunta o una duda (ej. "¿es virtual?", "¿cuánto cuesta?"), responde DESCONOCIDO. Solo responde NO si hay rechazo explícito (ej. "no", "no me interesa", "mejor no").' },
+          { role: 'system', content: 'Eres un clasificador. El usuario responde si quiere o no quiere participar/inscribirse en algo. Responde SOLO con: SI, NO, o DESCONOCIDO. Reglas: si hay un sí o no explícito (ej. "sí", "no", "sí, ¿es virtual?"), responde SI o NO según la intención principal. Responde DESCONOCIDO solo si el mensaje es una pregunta o duda SIN sí/no explícito (ej. "¿es virtual?", "¿cuánto cuesta?"). Solo responde NO si hay rechazo explícito (ej. "no", "no me interesa", "mejor no").' },
           { role: 'user', content: text },
         ],
         max_tokens: 300,
@@ -320,7 +353,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
     // Pregunta o duda → no se puede determinar
     if (/\?|¿/.test(text)) return null;
 
-    const apiKey = this.config.get('GEMINI_API_KEY', '');
+    const apiKey = this.config.get('OPENAI_API_KEY', '');
     if (!this.isConfigured(apiKey)) {
       // Fallback sin API
       const t = text.toLowerCase();

@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react';
 import { settingsApi } from '@/lib/api';
 import { Settings, Save, Trash2 } from 'lucide-react';
 
-const GEMINI_MODELS = [
-  { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash — Recomendado (rápido y barato)' },
-  { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-  { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite — Máxima economía' },
+const OPENAI_MODELS = [
+  { value: 'gpt-4o-mini', label: 'GPT-4o Mini — Recomendado (rápido y económico)' },
+  { value: 'gpt-4o', label: 'GPT-4o — Mayor calidad' },
+  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini — Equilibrio calidad/precio' },
 ];
 
 export default function SettingsPage() {
@@ -17,7 +17,7 @@ export default function SettingsPage() {
     yape_number: '',
     yape_name: '',
     agent_tone: 'amigable',
-    ai_model: 'gemini-3.6-flash',
+    ai_model: 'gpt-4o-mini',
     welcome_message: '',
   });
   const [testPhone, setTestPhone] = useState('');
@@ -38,7 +38,7 @@ export default function SettingsPage() {
         yape_number: d.yape_number || '',
         yape_name: d.yape_name || '',
         agent_tone: d.agent_tone || 'amigable',
-        ai_model: d.ai_model || 'gemini-3.6-flash',
+        ai_model: d.ai_model || 'gpt-4o-mini',
         welcome_message: d.welcome_message || '',
       });
       setLoading(false);
@@ -164,13 +164,13 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Modelo de IA (Gemini)</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Modelo de IA (OpenAI)</label>
               <select
                 value={form.ai_model}
                 onChange={(e) => setForm({ ...form, ai_model: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {GEMINI_MODELS.map((m) => (
+                {OPENAI_MODELS.map((m) => (
                   <option key={m.value} value={m.value}>{m.label}</option>
                 ))}
               </select>

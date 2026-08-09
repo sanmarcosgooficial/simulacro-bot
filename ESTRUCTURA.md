@@ -12,7 +12,7 @@ Sistema CRM con agente de IA para automatizar la venta de Simulacros San Marcos 
 | Backend | NestJS 10, TypeScript |
 | ORM | TypeORM 0.3 |
 | Base de datos | PostgreSQL |
-| IA | Mastra Core + OpenRouter (Claude 3.5 Sonnet) |
+| IA | OpenAI — chat con `gpt-4o-mini`, clasificadores con `gpt-4o-mini` (via `OPENAI_CLASSIFIER_MODEL`) |
 | WhatsApp | YCloud API |
 | Almacenamiento | Cloudflare R2 (AWS S3 compatible) |
 | Tiempo real | Server-Sent Events (SSE) |
@@ -28,13 +28,13 @@ simulacro-bot/                         ← Raíz del monorepo
 │
 ├── INICIAR.bat                        ← Arranca backend + frontend en paralelo
 ├── PRIMERA_VEZ.bat                    ← Instalación inicial (pnpm + dependencias)
-├── cloudflared.exe                    ← Binario de Cloudflare Tunnel
+├── cloudflared.exe                    ← Binario de Cloudflare Tunnel (gitignored, solo local)
 ├── package.json                       ← Scripts raíz del workspace
 ├── pnpm-workspace.yaml                ← Define los paquetes: backend y frontend
 ├── pnpm-lock.yaml
 ├── .gitignore
 ├── README.md
-├── cf-out.txt / cf-err.txt            ← Logs del túnel Cloudflare
+├── cf-out.txt / cf-err.txt            ← Logs del túnel Cloudflare (gitignored, solo local)
 │
 ├── backend/                           ← Paquete NestJS
 │   ├── .env                           ← Variables de entorno (no en git)
@@ -94,7 +94,7 @@ simulacro-bot/                         ← Raíz del monorepo
 │       │   ├── webhooks.module.ts
 │       │   └── webhooks.service.ts    ← Procesamiento de mensajes entrantes (~38 KB)
 │       │
-│       ├── ai/                        ← Agente de IA (Mastra + OpenRouter)
+│       ├── ai/                        ← Agente de IA (OpenAI)
 │       │   ├── ai.module.ts
 │       │   └── ai.service.ts          ← Lógica del agente conversacional (~12 KB)
 │       │
@@ -127,6 +127,7 @@ simulacro-bot/                         ← Raíz del monorepo
     ├── .env.local                     ← Variables de entorno del cliente (no en git)
     ├── .env.local.example             ← Plantilla
     ├── next.config.js
+    ├── next-env.d.ts                   ← Tipos autogenerados por Next.js
     ├── tailwind.config.ts
     ├── postcss.config.js
     ├── tsconfig.json
@@ -175,10 +176,14 @@ simulacro-bot/                         ← Raíz del monorepo
 | `JWT_EXPIRES_IN` | Duración del token (ej. `7d`) |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciales del admin inicial |
 | `PORT` | Puerto del servidor NestJS (default `3001`) |
-| `OPENROUTER_API_KEY` | Clave de OpenRouter para el agente IA |
-| `OPENROUTER_MODEL` | Modelo a usar (ej. `anthropic/claude-3.5-sonnet`) |
+| `OPENAI_API_KEY` | Clave de OpenAI para el agente IA |
+| `OPENAI_MODEL` | Modelo de chat (default `gpt-4o-mini`) |
+| `OPENAI_CLASSIFIER_MODEL` | Modelo económico para clasificadores SI/NO y PRIMERA/EXPERIENCIA (default `gpt-4o-mini`) |
 | `YCLOUD_API_KEY` | Clave de la API de YCloud (WhatsApp) |
 | `YCLOUD_PHONE_NUMBER` | Número de WhatsApp Business |
+| `YCLOUD_WEBHOOK_SECRET` | Secreto para validar los webhooks entrantes de YCloud |
+| `MY_PHONE` | Modo prueba: solo estos números reciben respuesta del bot (vacío = responde a todos) |
+| `BACKEND_PUBLIC_URL` | URL pública del backend (p. ej. túnel Cloudflare) para acceder al flyer |
 | `FRONTEND_URL` | URL del frontend para CORS |
 
 ---

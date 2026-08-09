@@ -13,7 +13,7 @@ const DEFAULT_SETTINGS = [
   { key: 'yape_number', value: '978069398', description: 'Número de Yape para pagos' },
   { key: 'yape_name', value: 'Pool Nuñez', description: 'Nombre del titular de Yape' },
   { key: 'agent_tone', value: 'amigable', description: 'Tono del agente: amigable, formal, cercano' },
-  { key: 'ai_model', value: 'gemini-3.6-flash', description: 'Modelo de IA (Gemini)' },
+  { key: 'ai_model', value: 'gpt-4o-mini', description: 'Modelo de IA (OpenAI)' },
   { key: 'flyer_url', value: '', description: 'URL del flyer del simulacro' },
   { key: 'agent_enabled', value: 'true', description: 'Agente IA activo' },
   { key: 'welcome_message', value: '¡Hola! 👋 Soy el asistente de Simulacros San Marcos. ¿En qué te puedo ayudar?', description: 'Mensaje de bienvenida' },
@@ -43,6 +43,15 @@ export class SettingsService implements OnModuleInit {
 
     // Migración: eliminar la clave antigua 'openai_model' (reemplazada por 'ai_model')
     await this.repo.delete({ key: 'openai_model' });
+
+    // Migración: valores de 'ai_model' de la era Gemini → resetear al default OpenAI.
+    // La BD tiene prioridad sobre el .env, así que sin esto el bot seguiría usando
+    // un modelo de Gemini contra el endpoint de OpenAI.
+    const aiModel = await this.repo.findOne({ where: { key: 'ai_model' } });
+    if (aiModel && aiModel.value.startsWith('gemini-')) {
+      aiModel.value = 'gpt-4o-mini';
+      await this.repo.save(aiModel);
+    }
   }
 
   async getAll(): Promise<Record<string, string>> {

@@ -1,0 +1,94 @@
+CLIENTE: Hola, quiero probarme en el Simulacro de San Marcos 🧑‍⚕️!  (Aquí puede variar ejemplos Buenos, información)
+
+   BOT: Buenos días (o Buenas tardes / Buenas noches, según la hora
+   peruana)
+
+   BOT: ¿A qué carrera postulas? 😊
+
+   ──────────────────────────────────────────────────────────────────────
+
+   CLIENTE: Medicina
+
+(AQUI VANANGLORIA SU CARRERA, PUEDE VARIAR)
+
+   BOT: Uff de las mejores carreras y competitivas
+
+   BOT: ¿Primera vez que postulas o ya tienes experiencia?
+
+   ──────────────────────────────────────────────────────────────────────
+(AQUI MUESTRA EL VALOR DEL SIMULACRO, ES MI FORMA DE RESPONDER PERO PUEDE VARIAR)
+
+   CLIENTE: Es mi primera vez
+
+   BOT: Excelente, vamos con todo 💪  
+
+   BOT: Este simulacro te va ayudar a que te familiarices con el nivel y
+   el tiempo de San Marcos, también puedas ver en que nivel te encuentras
+    actualmente y saber los que te falta por mejorar
+
+   BOT: (envía el flyer del simulacro como imagen)
+
+   BOT: ¿Te atreves a ponerte a prueba?
+
+   ──────────────────────────────────────────────────────────────────────
+
+   CLIENTE: Sí claro!
+
+   BOT: ¿En qué horario te acomoda mejor, hoy de 10 a 1 o de 5 a 8?
+
+   (Los horarios que ya pasaron ese día se descartan automáticamente. Si
+   solo queda uno, agrega "o mañana" como alternativa.)
+
+   ──────────────────────────────────────────────────────────────────────
+
+   CLIENTE: De 10 a 1
+
+   BOT: Ok, ya lo registro
+
+   BOT: Me confirma con el yape al 978069398 a nombre de [nombre
+   configurado] 😊
+
+   BOT: Se le compartirá el link minutos antes de las 10
+
+   ──────────────────────────────────────────────────────────────────────
+
+   CLIENTE: (envía captura de pantalla del Yape)
+
+   BOT: ¡Gracias! 📸 Recibí tu comprobante. El equipo lo verificará en
+   breve y te confirmamos tu inscripción 🙏
+
+   ──────────────────────────────────────────────────────────────────────
+
+   Casos especiales
+
+   Si el cliente no puede en ese horario:
+
+   CLIENTE: Ese horario no me queda
+
+   BOT: No hay problema, también tenemos mañana de 5 a 8 ¿Te acomoda?
+
+   ──────────────────────────────────────────────────────────────────────
+
+   Si el cliente tiene experiencia previa:
+
+   BOT: Este simulacro te va ayudar bastante ya que podrás ver en que
+   nivel te encuentras actualmente y saber los que te falta por mejorar
+   para llegar listo al examen
+
+   ──────────────────────────────────────────────────────────────────────
+
+   Cunado se confirme su inscripción enviar:
+
+   BOT: ¡Ya estás inscrito! 🎉 Pronto te enviamos los detalles. Cualquier
+    duda, aquí estoy 😊
+
+   ──────────────────────────────────────────────────────────────────────
+
+   Si el cliente escribe texto mientras espera dar el pago:
+
+   BOT: Ok, quedo atento para registrarlo
+
+Cunado se confirme su inscripción enviar:
+
+   BOT: Listo. Ya estas inscrita  
+   BOT: Se te enviara link minutos antes de las (hora q escogio) 😊
