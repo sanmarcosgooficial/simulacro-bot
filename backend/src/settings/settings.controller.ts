@@ -14,10 +14,10 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
+import { memoryStorage } from 'multer';
 import { SettingsService } from './settings.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { R2Service } from '../r2/r2.service';
 
 @ApiTags('settings')
 @ApiBearerAuth()
@@ -27,6 +27,7 @@ export class SettingsController {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly config: ConfigService,
+    private readonly r2: R2Service,
   ) {}
 
   @Get()
@@ -45,32 +46,26 @@ export class SettingsController {
     return this.settingsService.clearTestData(phone);
   }
 
-  // Subir flyer del simulacro
+  // Subir flyer global
   @Post('upload-flyer')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: join(process.cwd(), 'uploads'),
-        filename: (_req, file, cb) => {
-          cb(null, `flyer${extname(file.originalname)}`);
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.startsWith('image/')) {
           return cb(new BadRequestException('Solo se permiten imágenes'), false);
         }
         cb(null, true);
       },
-      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB máximo
+      limits: { fileSize: 5 * 1024 * 1024 },
     }),
   )
   async uploadFlyer(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
-    // Guardar path relativo para que no se rompa al cambiar el túnel
-    const path = `/uploads/${file.filename}`;
-    await this.settingsService.set('flyer_url', path);
-    return { url: path, message: 'Flyer subido correctamente' };
+    const url = await this.r2.uploadFile(file, 'flyer-global');
+    await this.settingsService.set('flyer_url', url);
+    return { url, message: 'Flyer subido correctamente' };
   }
 
   // Limpiar mi número de prueba (MY_PHONE en .env)
