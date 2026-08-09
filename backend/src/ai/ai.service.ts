@@ -21,9 +21,29 @@ export class AiService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
+    // Google Gemini vía su endpoint compatible con OpenAI
     this.client = new OpenAI({
-      apiKey: this.config.get('OPENAI_API_KEY', ''),
+      apiKey: this.config.get('GEMINI_API_KEY', ''),
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
     });
+  }
+
+  // Verificar que la API key esté configurada (y no sea un placeholder)
+  private isConfigured(apiKey: string): boolean {
+    return !!apiKey && !/pon-aqui|TU_API|YOUR_|xxxx|CHANGE_ME|sk-pon/i.test(apiKey);
+  }
+
+  // Modelo de IA: prioriza el setting de la BD, luego el .env, luego el default
+  private async getModel(): Promise<string> {
+    return (
+      (await this.settings.get('ai_model')) ||
+      this.config.get('GEMINI_MODEL', 'gemini-3.6-flash')
+    );
+  }
+
+  // Modelo económico para clasificadores (SI/NO, PRIMERA/EXPERIENCIA)
+  private getClassifierModel(): string {
+    return this.config.get('GEMINI_CLASSIFIER_MODEL', 'gemini-3.5-flash-lite');
   }
 
   // Construir el system prompt del agente
@@ -79,6 +99,15 @@ export class AiService implements OnModuleInit {
       if (!simulacrosText) simulacrosText = 'No hay horarios disponibles por ahora.';
     }
 
+    // Hora actual de Perú (UTC-5, sin horario de verano)
+    const peruNow = new Date(Date.now() - 5 * 3600 * 1000);
+    const peruHour = peruNow.getUTCHours();
+    const peruMin = String(peruNow.getUTCMinutes()).padStart(2, '0');
+    const partOfDay =
+      peruHour >= 5 && peruHour < 12 ? 'mañana → saluda "Buenos días"' :
+      peruHour >= 12 && peruHour < 19 ? 'tarde → saluda "Buenas tardes"' :
+      'noche → saluda "Buenas noches"';
+
     // Contexto del cliente actual
     let clientContext = '';
     if (contactContext?.name || contactContext?.career) {
@@ -93,20 +122,29 @@ export class AiService implements OnModuleInit {
     const stage = contactContext?.funnelStage || 'inicio';
     if (stage === 'inicio') {
       const greet = contactContext?.greeting || 'Hola';
-      funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez. Debes responder con el saludo "${greet}" en un mensaje, y en otro mensaje separado con || pregúntale qué carrera postula. Siempre usa el formato: "${greet}||A qué carrera postulas 😊?". Si el cliente preguntó algo específico además del saludo, respóndelo brevemente en el primer mensaje antes del ||.`;
+      funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez. Responde con el saludo "${greet}" (según la hora de Perú) en el primer mensaje y en el segundo (separado con ||) pregúntale qué carrera postula. Formato recomendado: "${greet} 😊||¿A qué carrera postulas?" (puedes variar las palabras, pero incluye SIEMPRE el saludo y la pregunta de carrera). Si el cliente preguntó algo específico además del saludo, respóndelo brevemente en el primer mensaje antes del ||.`;
     } else if (stage === 'tiene_carrera') {
       funnelInstruction = `ETAPA ACTUAL: Ya sabemos que postula a ${contactContext?.career}. Si pregunta algo sobre el simulacro, respóndele y luego pregúntale si es su primera vez postulando o ya tiene experiencia.`;
     } else if (stage === 'tiene_experiencia') {
-      funnelInstruction = `ETAPA ACTUAL: Ya conocemos su experiencia. Ya vio el flyer y le preguntamos el horario. Si responde el horario o pregunta algo, respóndele y luego menciona el precio (S/ ${s.price || '50'}) y anímalo a inscribirse.`;
+      funnelInstruction = `ETAPA ACTUAL: Ya conocemos su experiencia y el bot ya preguntó "¿Te atreves a ponerte a prueba?". Si el cliente pregunta algo (modalidad, horario, etc.), respóndele en UNA línea breve. NUNCA menciones el precio ni los horarios todavía: el siguiente paso del bot es preguntarle qué horario le acomoda.`;
     } else if (stage === 'precio_mencionado') {
-      funnelInstruction = `ETAPA ACTUAL: El cliente ya conoce el precio. Si tiene dudas, resuélvelas. Si quiere inscribirse, dale los datos de Yape: ${s.yape_number || ''} a nombre de ${s.yape_name || ''}.`;
+      funnelInstruction = `ETAPA ACTUAL: El cliente ya conoce el precio y quiere inscribirse/pagar. Dale DE INMEDIATO los datos de pago con el número exacto: "Yape al ${s.yape_number || ''} a nombre de ${s.yape_name || ''}". NO ofrezcas horarios nuevos ni detalles de simulacros. Si tiene dudas, resuélvelas brevemente.`;
     } else if (stage === 'esperando_pago') {
       funnelInstruction = `ETAPA ACTUAL: El cliente está a punto de pagar. Sé breve y directo, transmite urgencia amigable para cerrar la venta ahora. No le des opción de dejarlo para después. Algo como "Perfecto, quedo atento a tu comprobante 👀" o "Dale, te espero con el yape 🙌". Nunca uses frases pasivas como "cuando puedas" o "no olvides". Máximo 1 mensaje corto.`;
     }
 
     return `Eres un asesor comercial humano de ${s.business_name || 'Simulacros San Marcos'}, simulacros de examen para postulantes a San Marcos (UNMSM).
 
-TONO: ${s.agent_tone || 'amigable'}, muy breve, cálido, coloquial peruano. NUNCA suenes a robot ni a plantilla.
+HORA ACTUAL EN PERÚ: ${peruHour}:${peruMin} (${partOfDay}). Usa SIEMPRE el saludo que corresponde a esta hora de Perú.
+
+TONO: eres EL MEJOR VENDEDOR DEL MUNDO: cálido, carismático, persuasivo y cercano, con jerga peruana natural. Haces que el cliente se sienta especial y entusiasmado con la idea de entrar a San Marcos. Varía tus respuestas: NUNCA suenes a robot, plantilla ni guion repetido. Emojis con moderación.
+
+MENTALIDAD DE VENDEDOR ESTRELLA:
+- Valida al cliente: hazle sentir que entiendes su meta (ingresar a San Marcos) y que estás de su lado.
+- Vende el valor real del simulacro: familiarizarse con el nivel y tiempo reales del examen, medir su nivel actual y saber qué le falta mejorar.
+- Crea urgencia amable y natural (cupos y horarios que se llenan) SIN mentir ni inventar datos.
+- Si el cliente duda u objeta, responde con empatía, resuelve su objeción en una línea y avanza la venta.
+- Siempre avanzas la conversación hacia el siguiente paso del guion, con naturalidad y sin presión agresiva.
 
 INFORMACIÓN DEL NEGOCIO:
 - Precio: S/ ${s.price || '50'} por simulacro
@@ -115,6 +153,15 @@ INFORMACIÓN DEL NEGOCIO:
 
 SIMULACROS DISPONIBLES:
 ${simulacrosText}
+
+GUION OFICIAL DE VENTAS — SIGUE SIEMPRE ESTOS PASOS EN ESTE ORDEN (las palabras pueden variar, el orden no):
+1. Saludo según la hora actual de Perú (Buenos días / Buenas tardes / Buenas noches) y en el siguiente mensaje: "¿A qué carrera postulas? 😊"
+2. Cuando el cliente diga su carrera: elógiala brevemente (ej. "Uff de las mejores carreras y competitivas") y luego: "¿Primera vez que postulas o ya tienes experiencia?"
+3. Si es su primera vez: "Excelente, vamos con todo 💪" + mensaje de que el simulacro le ayuda a familiarizarse con el nivel y tiempo de San Marcos y ver su nivel actual. Si ya tiene experiencia: mensaje de que le ayudará a ver su nivel actual y qué le falta por mejorar. Luego se envía el flyer y se pregunta: "¿Te atreves a ponerte a prueba?"
+4. Si acepta: preguntar horario: "¿En qué horario te acomoda mejor, {horarios}?" (solo los horarios que aún no pasaron)
+5. Cuando elija horario: "Ok, ya lo registro" + "Me confirma con el yape al {número} a nombre de {nombre} 😊" + "Se le compartirá el link minutos antes de las {hora}"
+6. Al recibir el comprobante: "¡Gracias! 📸 Recibí tu comprobante. El equipo lo verificará en breve y te confirmamos tu inscripción 🙏"
+
 ${clientContext}
 
 ${funnelInstruction}
@@ -126,14 +173,19 @@ FORMATO DE RESPUESTA — MUY IMPORTANTE:
 - Máximo 2 mensajes por respuesta (un solo ||)
 - Cada mensaje: máximo 2-3 líneas
 
-REGLAS:
-- Si el cliente pregunta algo fuera del flujo (precio, horario, virtual, etc.), respóndelo y retoma el flujo
-- NUNCA menciones el nombre del área ni el área académica
-- NUNCA preguntes la carrera (el flujo la captura solo)
-- NUNCA inventes precios, fechas ni descuentos
-- Si mencionas el simulacro, llámalo "San Marcos Las Fijas"
-- NUNCA menciones horarios en formato técnico como "10:00 a 13:00", usa solo "de 10 a 1" o "de 5 a 8"
-- Si no sabes algo, di "ya lo consulto y te aviso"`;
+REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
+- Responde SIEMPRE con el texto final natural que ve el cliente. NUNCA incluyas notas internas, planes, pasos numerados, asteriscos, comillas ni texto entre símbolos (*, «», >). Si piensas en pasos, no los escribas: envía solo los mensajes finales.
+- Sigue el GUION OFICIAL en orden: NUNCA saltes pasos ni cambies el orden de las preguntas.
+- NUNCA muestres el precio antes de que el cliente elija horario (paso 5).
+- NUNCA inventes precios, fechas, horarios ni descuentos.
+- NUNCA menciones el nombre del área ni el área académica.
+- NUNCA preguntes la carrera (el flujo la captura solo).
+- Si el cliente pregunta algo fuera del flujo (precio, horario, virtual, etc.), respóndelo en UNA línea breve y retoma el siguiente paso del guion.
+- Si el cliente se desvía, vuelve con naturalidad al paso que corresponde del guion, sin repetir preguntas ya respondidas.
+- Si mencionas el simulacro, llámalo siempre "San Marcos Las Fijas".
+- NUNCA menciones horarios en formato técnico como "10:00 a 13:00", usa solo "de 10 a 1" o "de 5 a 8".
+- Si no sabes algo, di "ya lo consulto y te aviso".
+- Nunca digas que eres un bot ni un asistente virtual.`;
   }
 
   // Procesar mensaje y generar respuesta
@@ -151,13 +203,11 @@ REGLAS:
       isAdMessage?: boolean;
     },
   ): Promise<string> {
-    const apiKey = this.config.get('OPENAI_API_KEY', '');
-    const model =
-      (await this.settings.get('openai_model')) ||
-      this.config.get('OPENAI_MODEL', 'gpt-4o-mini');
+    const apiKey = this.config.get('GEMINI_API_KEY', '');
+    const model = await this.getModel();
 
     // Sin API key → respuestas de respaldo
-    if (!apiKey || apiKey.includes('sk-pon-aqui')) {
+    if (!this.isConfigured(apiKey)) {
       return this.getFallbackResponse(userMessage);
     }
 
@@ -176,7 +226,7 @@ REGLAS:
       const completion = await this.client.chat.completions.create({
         model,
         messages,
-        max_tokens: 300,
+        max_tokens: 1000,
         temperature: 0.6,
       });
 
@@ -184,22 +234,22 @@ REGLAS:
 
       if (!reply) return this.getFallbackResponse(userMessage);
 
-      this.logger.log(`GPT [${model}] → ${reply.substring(0, 80)}`);
+      this.logger.log(`Gemini [${model}] → ${reply.substring(0, 80)}`);
       return reply;
 
     } catch (error: any) {
-      this.logger.error('Error OpenAI:', error?.message || error);
+      this.logger.error('Error Gemini:', error?.message || error);
 
       // Si el error es de API key inválida, indicarlo claramente en el log
       if (error?.status === 401) {
-        this.logger.error('API key de OpenAI inválida. Revisa OPENAI_API_KEY en el .env');
+        this.logger.error('API key de Gemini inválida. Revisa GEMINI_API_KEY en el .env');
       }
 
       return this.getFallbackResponse(userMessage);
     }
   }
 
-  // Respuestas de respaldo cuando no hay API key o falla OpenAI
+  // Respuestas de respaldo cuando no hay API key o falla Gemini
   private getFallbackResponse(message: string): string {
     const msg = message.toLowerCase();
 
@@ -231,21 +281,28 @@ REGLAS:
 
   // Detectar si el cliente dice sí (true), no (false), o no está claro (null)
   async detectYesOrNo(text: string): Promise<boolean | null> {
-    const apiKey = this.config.get('OPENAI_API_KEY', '');
-    if (!apiKey || apiKey.includes('sk-pon-aqui')) {
-      const t = text.toLowerCase();
+    // Pregunta SIN señal clara de sí/no → ambiguo (evita clasificar mal).
+    // Si hay un sí/no explícito (ej. "sí, ¿es virtual?"), se deja pasar al clasificador
+    // para que el flujo pueda responder la pregunta extra del cliente.
+    const t = text.toLowerCase();
+    const hasYes = /\b(s[ií]|ya)\b|dale|claro|quiero|me inscribo/.test(t);
+    const hasNo = /\bno\b|nop|mejor no|no me interesa/.test(t);
+    if (!hasYes && !hasNo && /\?|¿/.test(text)) return null;
+
+    const apiKey = this.config.get('GEMINI_API_KEY', '');
+    if (!this.isConfigured(apiKey)) {
       if (t.includes('sí') || t.includes('si') || t.includes('dale') || t.includes('claro') || t.includes('quiero') || t.includes('ya')) return true;
       if (t.includes('no') || t.includes('nop') || t.includes('mejor no')) return false;
       return null;
     }
     try {
       const res = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: this.getClassifierModel(),
         messages: [
-          { role: 'system', content: 'Eres un clasificador. El usuario responde si quiere o no quiere participar/inscribirse en algo. Responde SOLO con: SI, NO, o DESCONOCIDO.' },
+          { role: 'system', content: 'Eres un clasificador. El usuario responde si quiere o no quiere participar/inscribirse en algo. Responde SOLO con: SI, NO, o DESCONOCIDO. Reglas: si el mensaje es una pregunta o una duda (ej. "¿es virtual?", "¿cuánto cuesta?"), responde DESCONOCIDO. Solo responde NO si hay rechazo explícito (ej. "no", "no me interesa", "mejor no").' },
           { role: 'user', content: text },
         ],
-        max_tokens: 10,
+        max_tokens: 300,
         temperature: 0,
       });
       const answer = res.choices[0]?.message?.content?.trim().toUpperCase() || '';
@@ -260,8 +317,11 @@ REGLAS:
   // Detectar si el cliente es primera vez (true) o tiene experiencia (false)
   // Retorna null si no está claro en el mensaje
   async detectFirstTime(text: string): Promise<boolean | null> {
-    const apiKey = this.config.get('OPENAI_API_KEY', '');
-    if (!apiKey || apiKey.includes('sk-pon-aqui')) {
+    // Pregunta o duda → no se puede determinar
+    if (/\?|¿/.test(text)) return null;
+
+    const apiKey = this.config.get('GEMINI_API_KEY', '');
+    if (!this.isConfigured(apiKey)) {
       // Fallback sin API
       const t = text.toLowerCase();
       if (t.includes('primera') || t.includes('nunca') || t.includes('nuevo') || t.includes('recién') || t.includes('si')) return true;
@@ -270,12 +330,12 @@ REGLAS:
     }
     try {
       const res = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: this.getClassifierModel(),
         messages: [
-          { role: 'system', content: 'Eres un clasificador. El usuario responde si es su primera vez postulando a la universidad o si ya tiene experiencia. Responde SOLO con: PRIMERA, EXPERIENCIA, o DESCONOCIDO.' },
+          { role: 'system', content: 'Eres un clasificador. El usuario responde si es su primera vez postulando a la universidad o si ya tiene experiencia. Responde SOLO con: PRIMERA, EXPERIENCIA, o DESCONOCIDO. Reglas: si el mensaje es una pregunta o no queda claro, responde DESCONOCIDO.' },
           { role: 'user', content: text },
         ],
-        max_tokens: 10,
+        max_tokens: 300,
         temperature: 0,
       });
       const answer = res.choices[0]?.message?.content?.trim().toUpperCase() || '';

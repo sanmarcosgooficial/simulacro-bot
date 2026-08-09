@@ -187,10 +187,11 @@ export class WebhooksService {
 
       switch (stage) {
 
-        // ETAPA 0: cliente nuevo → solo responde si viene del anuncio de Meta
+        // ETAPA 0: cliente nuevo → SOLO responde si viene del anuncio de Meta
+        // (mensaje del tipo "Hola, quiero probarme en el Simulacro de San Marcos ⚕️!")
         case ConversationStage.NUEVA: {
-          const isAdMessage = combinedText.toLowerCase().includes('quiero probarme en') ||
-                              combinedText.toLowerCase().includes('simulacro de san marcos');
+          const t = combinedText.toLowerCase();
+          const isAdMessage = t.includes('quiero probarme') && /simulacro|san marcos/i.test(t);
           if (!isAdMessage) {
             // Mensaje que no viene del anuncio → ignorar silenciosamente
             this.logger.log(`[SKIP] Contacto nuevo sin mensaje de anuncio: "${combinedText.substring(0, 50)}"`);
@@ -227,8 +228,11 @@ export class WebhooksService {
             // Solo tomar la primera parte si hay || y agregar la pregunta de carrera
             const firstPart = aiReply.split('||')[0].trim();
             await this.sendAndSaveReply(conversation.id, phone, firstPart);
-            await new Promise((r) => setTimeout(r, 1000));
-            await this.sendAndSaveReply(conversation.id, phone, '¿A qué carrera postulas? 😊');
+            // Si la IA ya incluyó la pregunta de carrera (sin ||), no la repetimos
+            if (!/carrera|estudi|postul/i.test(firstPart)) {
+              await new Promise((r) => setTimeout(r, 1000));
+              await this.sendAndSaveReply(conversation.id, phone, '¿A qué carrera postulas? 😊');
+            }
           }
           break;
         }
