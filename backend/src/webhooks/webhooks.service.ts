@@ -122,7 +122,12 @@ export class WebhooksService {
     }
 
     await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, 7000);
+      const timer = setTimeout(() => {
+        // Limpiar el mapa para que el próximo mensaje (aunque sea horas después)
+        // vuelva a considerar este número como "inicio de ventana" (typing indicator).
+        this.debounceTimers.delete(phone);
+        resolve();
+      }, 7000);
       this.debounceTimers.set(phone, timer);
     });
 
@@ -159,11 +164,15 @@ export class WebhooksService {
         await this.conversations.linkContact(phone, contact.id);
       }
 
-      // 5. Guardar el mensaje del usuario
+      // 5. Guardar el mensaje del usuario. Si hubo mensajes por partes acumulados
+      //    en el debounce, guardamos el texto COMBINADO para que la IA tenga el
+      //    contexto completo en los siguientes turnos ("ya postulo antes me envia
+      //    la informacion enviado porfavor" y no solo la última parte).
+      const userTextToSave = allPending.length > 1 ? combinedText : (textContent || `[${messageType}]`);
       const userMsg = await this.conversations.addMessage(
         conversation.id,
         MessageRole.USER,
-        textContent || `[${messageType}]`,
+        userTextToSave,
         {
           type: messageType === 'image' ? MessageType.IMAGE : 
                 messageType === 'document' ? MessageType.DOCUMENT : MessageType.TEXT,
