@@ -87,7 +87,7 @@ export class DashboardService {
       upcomingSimulacros,
       agent: {
         enabled: agentEnabled,
-        model: settings.openrouter_model,
+        model: settings.ai_model,
       },
     };
   }

@@ -41,6 +41,6 @@ pnpm dev:frontend
 - **Backend**: NestJS
 - **ORM**: TypeORM
 - **Base de datos**: PostgreSQL
-- **IA**: Mastra + OpenRouter
+- **IA**: Google Gemini (vía endpoint OpenAI-compatible)
 - **WhatsApp**: YCloud
 - **Tiempo real**: SSE

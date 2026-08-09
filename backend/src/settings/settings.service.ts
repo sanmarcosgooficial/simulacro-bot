@@ -10,10 +10,10 @@ import { Message } from '../conversations/entities/message.entity';
 const DEFAULT_SETTINGS = [
   { key: 'business_name', value: 'San Marcos GO', description: 'Nombre del negocio' },
   { key: 'price', value: '19', description: 'Precio del simulacro en soles' },
-  { key: 'yape_number', value: '948257314', description: 'Número de Yape para pagos' },
+  { key: 'yape_number', value: '978069398', description: 'Número de Yape para pagos' },
   { key: 'yape_name', value: 'Pool Nuñez', description: 'Nombre del titular de Yape' },
   { key: 'agent_tone', value: 'amigable', description: 'Tono del agente: amigable, formal, cercano' },
-  { key: 'openai_model', value: 'gpt-4o-mini', description: 'Modelo de OpenAI' },
+  { key: 'ai_model', value: 'gemini-3.6-flash', description: 'Modelo de IA (Gemini)' },
   { key: 'flyer_url', value: '', description: 'URL del flyer del simulacro' },
   { key: 'agent_enabled', value: 'true', description: 'Agente IA activo' },
   { key: 'welcome_message', value: '¡Hola! 👋 Soy el asistente de Simulacros San Marcos. ¿En qué te puedo ayudar?', description: 'Mensaje de bienvenida' },
@@ -40,6 +40,9 @@ export class SettingsService implements OnModuleInit {
         await this.repo.save(this.repo.create(setting));
       }
     }
+
+    // Migración: eliminar la clave antigua 'openai_model' (reemplazada por 'ai_model')
+    await this.repo.delete({ key: 'openai_model' });
   }
 
   async getAll(): Promise<Record<string, string>> {
