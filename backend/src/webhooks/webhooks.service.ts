@@ -291,7 +291,11 @@ export class WebhooksService {
           if (parsed.flyer) {
             await new Promise((r) => setTimeout(r, 1000));
             const activeSimulacros = await this.simulacros.findActive();
-            const simFlyer = activeSimulacros.find((s) => (s as any).flyerUrl)?.flyerUrl;
+            // Si la IA indicó una fecha ([FLYER:YYYY-MM-DD]), usar el flyer de ESE
+            // simulacro. Si no, el primer disponible con flyer.
+            const simFlyer = parsed.flyerDate
+              ? activeSimulacros.find((s) => s.date === parsed.flyerDate)?.flyerUrl
+              : activeSimulacros.find((s) => (s as any).flyerUrl)?.flyerUrl;
             const globalFlyer = await this.settings.get('flyer_url');
             const rawPath = simFlyer || globalFlyer;
             if (rawPath?.trim()) {
@@ -348,12 +352,15 @@ export class WebhooksService {
     }
   }
 
-  // Separar los marcadores de acción del texto que ve el cliente
-  private parseMarkers(text: string): { text: string; flyer: boolean; pago: boolean } {
-    const flyer = /\[FLYER\]/i.test(text);
+  // Separar los marcadores de acción del texto que ve el cliente.
+  // [FLYER] envía el flyer del primer disponible; [FLYER:YYYY-MM-DD] envía
+  // el flyer del simulacro con ESA fecha exacta (el que la IA está ofreciendo).
+  private parseMarkers(text: string): { text: string; flyer: boolean; pago: boolean; flyerDate?: string } {
+    const flyer = /\[FLYER(:\d{4}-\d{2}-\d{2})?\]/i.test(text);
     const pago = /\[PAGO\]/i.test(text);
-    const clean = text.replace(/\[(FLYER|PAGO)\]/gi, '').trim();
-    return { text: clean, flyer, pago };
+    const flyerDateMatch = text.match(/\[FLYER:(\d{4}-\d{2}-\d{2})\]/i);
+    const clean = text.replace(/\[FLYER(:\d{4}-\d{2}-\d{2})?\]/gi, '').replace(/\[PAGO\]/gi, '').trim();
+    return { text: clean, flyer, pago, flyerDate: flyerDateMatch?.[1] };
   }
 
   private async sendAndSaveReply(

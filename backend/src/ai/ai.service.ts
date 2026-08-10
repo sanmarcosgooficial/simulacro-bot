@@ -69,13 +69,25 @@ export class AiService implements OnModuleInit {
       const tomorrowStr = (() => { const d = new Date(now); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })();
       const currentHour = now.getUTCHours() + now.getUTCMinutes() / 60;
       const fmt12 = (h: number) => h > 12 ? h - 12 : h;
+      // Formatear una fecha ISO (YYYY-MM-DD) en español: "10 de agosto"
+      const fmtDate = (iso: string) => {
+        const [y, m, d] = iso.split('-');
+        const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+        return `${parseInt(d, 10)} de ${meses[parseInt(m, 10) - 1] || ''}`;
+      };
 
       simulacrosText = activeSimulacros
         .filter((sim) => sim.date >= todayStr) // nunca ofrecer simulacros de fechas pasadas
         .map((sim) => {
           const isToday = sim.date === todayStr;
           const isTomorrow = sim.date === tomorrowStr;
-          const dayLabel = isToday ? 'hoy' : isTomorrow ? 'mañana' : `el ${sim.date}`;
+          // Etiqueta SIEMPRE con la fecha real resuelta para que la IA nunca
+          // calcule fechas: "hoy, 9 de agosto" / "mañana, 10 de agosto" / "el 15 de agosto"
+          const dayLabel = isToday
+            ? `hoy, ${fmtDate(todayStr)}`
+            : isTomorrow
+              ? `mañana, ${fmtDate(tomorrowStr)}`
+              : `el ${fmtDate(sim.date)}`;
 
           const availableSchedules = (sim.schedules || []).filter((h: string) => {
             if (!isToday) return true;
@@ -93,7 +105,7 @@ export class AiService implements OnModuleInit {
               }).join(' o ')
             : (sim.schedules || [sim.time]).join(' o ');
 
-          return `- San Marcos Las Fijas (${dayLabel}), horarios: ${horarios}${sim.area ? ` (${sim.area})` : ''} - 100% virtual`;
+          return `- San Marcos Las Fijas (${dayLabel}) [fecha: ${sim.date}], horarios: ${horarios}${sim.area ? ` (${sim.area})` : ''} - 100% virtual`;
         })
         .filter(Boolean)
         .join('\n');
@@ -124,7 +136,14 @@ export class AiService implements OnModuleInit {
     const stage = contactContext?.funnelStage || 'inicio';
     if (stage === 'inicio') {
       const greet = contactContext?.greeting || 'Hola';
-      funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez. Responde con el saludo "${greet}" (según la hora de Perú) en el primer mensaje y en el segundo (separado con ||) pregúntale qué carrera postula. Formato recomendado: "${greet} 😊||¿A qué carrera postulas?" (puedes variar las palabras, pero incluye SIEMPRE el saludo y la pregunta de carrera). Si el cliente preguntó algo específico además del saludo, respóndelo brevemente en el primer mensaje antes del ||.`;
+      const isAd = contactContext?.isAdMessage === true;
+      if (isAd) {
+        // Viene del anuncio de Meta: saluda y pregunta la carrera (flujo del anuncio)
+        funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez desde el ANUNCIO de Meta. Responde con el saludo "${greet}" (según la hora de Perú) en el primer mensaje y en el segundo (separado con ||) pregúntale qué carrera postula. Formato recomendado: "${greet} 😊||¿A qué carrera postulas?" (puedes variar las palabras, pero incluye SIEMPRE el saludo y la pregunta de carrera). Si el cliente preguntó algo específico además del saludo, respóndelo brevemente en el primer mensaje antes del ||.`;
+      } else {
+        // Consulta normal o solo saludo de un cliente nuevo: NO preguntes la carrera todavía
+        funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez, pero NO viene del anuncio (es una consulta normal o solo un saludo). Salúdalo con "${greet}" (según la hora de Perú) de forma corta y natural y pregúntale "¿En qué te puedo ayudar? 😊" o "¿Tienes alguna consulta?". NO preguntes qué carrera postula todavía: espera a que el cliente haga una pregunta concreta. Si el cliente ya preguntó algo específico, respóndelo brevemente y luego ofrécete a ayudarlo.`;
+      }
     } else if (stage === 'sin_carrera') {
       funnelInstruction = `ETAPA ACTUAL: El bot YA saludó y preguntó la carrera, pero el cliente aún no la dice. NO vuelvas a saludar ni repitas el saludo (ni "Buenos días/tardes/noches" ni "Hola"). Si el cliente preguntó algo (precio, modalidad, horario, etc.), respóndele en UNA línea breve y luego pregúntale naturalmente qué carrera postula (ej. "¿A qué carrera postulas? 😊" — varía las palabras). Si no preguntó nada, solo pregúntale la carrera en una línea. Máximo 2 mensajes cortos, y NUNCA incluyas saludos.`;
     } else if (stage === 'libre') {
@@ -210,7 +229,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
 - Responde SIEMPRE con el texto final natural que ve el cliente. NUNCA incluyas notas internas, planes, pasos numerados, asteriscos, comillas ni texto entre símbolos (*, «», >). Si piensas en pasos, no los escribas: envía solo los mensajes finales.
 - Sigue el GUION OFICIAL en orden: NUNCA saltes pasos ni cambies el orden de las preguntas.
 - NUNCA muestres el precio antes de que el cliente elija horario (paso 5). PERO si el cliente PREGUNTA el precio directamente ("¿cuánto cuesta?", "¿qué precio tiene?"), respóndelo en UNA línea (ej. "Cuesta S/ 50") y retoma el guion.
-- NUNCA inventes precios, fechas, horarios ni descuentos. PERO los SIMULACROS DISPONIBLES de arriba son datos REALES del sistema: si el cliente pregunta qué día/hora es el simulacro, respóndele CON CONFIANZA usando esos datos (ej. "mañana", "el 10 de agosto", "de 5 a 8"). La regla "En un momento te respondo" aplica SOLO a información que NO está en tu contexto.
+- NUNCA inventes precios, fechas, horarios ni descuentos. Los SIMULACROS DISPONIBLES de arriba son datos REALES del sistema (vienen de la base de datos del negocio). Cuando el cliente pregunte qué día/hora es el simulacro, respóndele COPANDO EXACTAMENTE la fecha y horarios que aparecen en SIMULACROS DISPONIBLES (ej. "mañana, 10 de agosto", "de 5 a 8"). NUNCA calcules ni conviertas fechas tú mismo: si la lista dice "mañana, 10 de agosto", responde "mañana, 10 de agosto" — ni un día más ni un día menos. La regla "En un momento te respondo" aplica SOLO a información que NO está en tu contexto.
 - NUNCA menciones el nombre del área ni el área académica.
 - NUNCA preguntes la carrera (el flujo la captura solo).
 - Si el cliente pregunta algo fuera del flujo (precio, horario, virtual, etc.), respóndelo en UNA línea breve y retoma el siguiente paso del guion.
@@ -219,6 +238,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
 - URGENCIA MOTIVADORA (OBLIGATORIA): si el siguiente simulacro de SIMULACROS DISPONIBLES es HOY o MAÑANA, SIEMPRE incluye una frase motivadora de vendedor profesional en tu respuesta al hablar de fechas/horarios, por ejemplo: "¡El simulacro es mañana! 🔥 Aún estás a tiempo de medir tu nivel antes del examen", "¡Es mañana mismo! Este es tu momento 💪" o similar. NO inventes cupos ni datos falsos.
 - Si el cliente pregunta algo que no sabes (fechas futuras, precios especiales, detalles técnicos, etc.), responde: "En un momento te respondo, déjame verificar 😊" y continúa con el flujo normal.
 - Marcadores de acción (el sistema los procesa, NUNCA los ve el cliente): cuando tu respuesta requiera que el sistema haga algo, agrega UNA línea al final con [FLYER] para que envíe la imagen del simulacro, o [PAGO] cuando ya le diste los datos de pago y esperas su comprobante.
+- Si vas a enviar el flyer de un simulacro específico, usa [FLYER:fecha-YYYY-MM-DD] con la fecha EXACTA que aparece en SIMULACROS DISPONIBLES (ej. [FLYER:2026-08-10]). Así el sistema envía el flyer correcto de ese simulacro. Si no indicas fecha, se envía el del primer disponible.
 - Si mencionas el simulacro, llámalo siempre "San Marcos Las Fijas".
 - NUNCA digas que vas a compartir el flyer ni prometas enviar imágenes: el sistema las envía automáticamente cuando corresponde.
 - NUNCA menciones horarios en formato técnico como "10:00 a 13:00", usa solo "de 10 a 1" o "de 5 a 8".
