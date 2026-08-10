@@ -105,7 +105,7 @@ export class AiService implements OnModuleInit {
               }).join(' o ')
             : (sim.schedules || [sim.time]).join(' o ');
 
-          return `- San Marcos Las Fijas (${dayLabel}) [fecha: ${sim.date}], horarios: ${horarios}${sim.area ? ` (${sim.area})` : ''} - 100% virtual`;
+          return `- San Marcos Las Fijas (${dayLabel}) [fecha: ${sim.date}], horarios: ${horarios}${sim.area ? ` (${sim.area})` : ''} - 100% virtual (S/ 19)`;
         })
         .filter(Boolean)
         .join('\n');
@@ -124,11 +124,12 @@ export class AiService implements OnModuleInit {
 
     // Contexto del cliente actual
     let clientContext = '';
-    if (contactContext?.name || contactContext?.career) {
-      clientContext = `\nCLIENTE ACTUAL:`;
+    if (contactContext?.name || contactContext?.career || contactContext?.funnelStage) {
+      clientContext = `\nCLIENTE ACTUAL (datos confirmados en el sistema, NO los vuelvas a preguntar):`;
       if (contactContext.name) clientContext += `\n- Nombre: ${contactContext.name}`;
-      if (contactContext.career) clientContext += `\n- Carrera: ${contactContext.career}`;
+      if (contactContext.career) clientContext += `\n- Carrera: ${contactContext.career} (YA LA SABES → NUNCA vuelvas a preguntar la carrera)`;
       if (contactContext.area) clientContext += `\n- Área: ${contactContext.area}`;
+      if (contactContext.status) clientContext += `\n- Estado: ${contactContext.status}`;
     }
 
     // Instrucción según etapa del funnel
@@ -142,7 +143,9 @@ export class AiService implements OnModuleInit {
         funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez desde el ANUNCIO de Meta. Responde con el saludo "${greet}" (según la hora de Perú) en el primer mensaje y en el segundo (separado con ||) pregúntale qué carrera postula. Formato recomendado: "${greet} 😊||¿A qué carrera postulas?" (puedes variar las palabras, pero incluye SIEMPRE el saludo y la pregunta de carrera). Si el cliente preguntó algo específico además del saludo, respóndelo brevemente en el primer mensaje antes del ||.`;
       } else {
         // Consulta normal o solo saludo de un cliente nuevo: NO preguntes la carrera todavía
-        funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez, pero NO viene del anuncio (es una consulta normal o solo un saludo). Salúdalo con "${greet}" (según la hora de Perú) de forma corta y natural y pregúntale "¿En qué te puedo ayudar? 😊" o "¿Tienes alguna consulta?". NO preguntes qué carrera postula todavía: espera a que el cliente haga una pregunta concreta. Si el cliente ya preguntó algo específico, respóndelo brevemente y luego ofrécete a ayudarlo.`;
+        funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez, pero NO viene del anuncio (es una consulta normal o solo un saludo).
+        - Si SOLO saluda ("hola", "buenas tardes", etc.) sin preguntar nada: salúdalo con "${greet}" (según la hora de Perú) de forma corta y natural y pregúntale "¿En qué te puedo ayudar? 😊" o "¿Tienes alguna consulta?". NO preguntes qué carrera postula todavía.
+        - Si YA preguntó algo específico sobre el simulacro (precio, fechas, horarios, inscripción, modalidad, carreras): respóndelo en UNA línea con los datos reales de SIMULACROS DISPONIBLES y PRECIO, agrega la línea [FLYER] al final para que el sistema envíe la imagen del simulacro, y LUEGO pregúntale a qué carrera postula ("¿A qué carrera postulas? 😊"). SIEMPRE que el cliente muestre interés en el simulacro (pregunta fechas/precio/horarios), da la info + [FLYER] + pregunta la carrera en ese orden.`;
       }
     } else if (stage === 'sin_carrera') {
       funnelInstruction = `ETAPA ACTUAL: El bot YA saludó y preguntó la carrera, pero el cliente aún no la dice.
@@ -203,9 +206,9 @@ MENTALIDAD DE VENDEDOR ESTRELLA:
 - Siempre avanzas la conversación hacia el siguiente paso del guion, con naturalidad y sin presión agresiva.
 
 INFORMACIÓN DEL NEGOCIO:
-- Precio: S/ ${s.price || '50'} por simulacro
+- Precio: S/ ${s.price || '19'} por simulacro
 - Modalidad: 100% virtual (desde casa, celular o PC)
-- Pago: Yape al ${s.yape_number || '+51999999999'} a nombre de ${s.yape_name || 'el titular'}
+- Pago: Yape al ${s.yape_number || '948257314'} a nombre de ${s.yape_name || 'Pool Nuñez'}
 
 SIMULACROS DISPONIBLES:
 ${simulacrosText}
@@ -235,7 +238,8 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
 - NUNCA muestres el precio antes de que el cliente elija horario (paso 5). PERO si el cliente PREGUNTA el precio directamente ("¿cuánto cuesta?", "¿qué precio tiene?"), respóndelo en UNA línea (ej. "Cuesta S/ 50") y retoma el guion.
 - NUNCA inventes precios, fechas, horarios ni descuentos. Los SIMULACROS DISPONIBLES de arriba son datos REALES del sistema (vienen de la base de datos del negocio). Cuando el cliente pregunte qué día/hora es el simulacro, respóndele COPANDO EXACTAMENTE la fecha y horarios que aparecen en SIMULACROS DISPONIBLES (ej. "mañana, 10 de agosto", "de 5 a 8"). NUNCA calcules ni conviertas fechas tú mismo: si la lista dice "mañana, 10 de agosto", responde "mañana, 10 de agosto" — ni un día más ni un día menos. La regla "En un momento te respondo" aplica SOLO a información que NO está en tu contexto.
 - NUNCA menciones el nombre del área ni el área académica.
-- NUNCA preguntes la carrera (el flujo la captura solo).
+- NUNCA preguntes la carrera si ya la conoces (aparece en CLIENTE ACTUAL). Si el cliente la dijo alguna vez, NUNCA la vuelvas a preguntar en toda la conversación.
+- Si el cliente retoma la conversación HORAS o DÍAS después, usa el historial para recordar lo ya hablado (carrera, experiencia, horario elegido, si ya pagó) y continúa desde ahí sin repetir preguntas ya respondidas. Saluda naturalmente según la hora actual de Perú.
 - Si el cliente pregunta algo fuera del flujo (precio, horario, virtual, etc.), respóndelo en UNA línea breve y retoma el siguiente paso del guion.
 - Si el cliente SOLO saluda ("buenas tardes", "hola", "buenos días") sin preguntar nada específico, respóndele con un saludo corto y natural (según la hora de Perú) y pregúntale "¿En qué te puedo ayudar?" o "¿Tienes alguna consulta?". NO preguntes la carrera en este caso ni adelantes precio, horarios ni modalidad si no te los pidieron.
 - Si el cliente se desvía, vuelve con naturalidad al paso que corresponde del guion, sin repetir preguntas ya respondidas.
@@ -245,6 +249,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
 - Si vas a enviar el flyer de un simulacro específico, usa [FLYER:fecha-YYYY-MM-DD] con la fecha EXACTA que aparece en SIMULACROS DISPONIBLES (ej. [FLYER:2026-08-10]). Así el sistema envía el flyer correcto de ese simulacro. Si no indicas fecha, se envía el del primer disponible.
 - Si mencionas el simulacro, llámalo siempre "San Marcos Las Fijas".
 - NUNCA digas que vas a compartir el flyer ni prometas enviar imágenes: el sistema las envía automáticamente cuando corresponde.
+- REGLA DE ORO DEL FLYER: SIEMPRE que menciones o des una fecha de un simulacro (ej. "hoy, 10 de agosto", "el 12 de agosto", "mañana"), debes agregar [FLYER] al final de tu respuesta. NUNCA des una fecha sin [FLYER].
 - NUNCA menciones horarios en formato técnico como "10:00 a 13:00", usa solo "de 10 a 1" o "de 5 a 8".
 - Si no sabes algo, di "ya lo consulto y te aviso".
 - Nunca digas que eres un bot ni un asistente virtual.`;
@@ -356,20 +361,19 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
     if (msg.includes('hola') || msg.includes('buenas') || msg.includes('buenos') || msg.includes('hi')) {
       return '¡Hola! 👋 Soy el asesor de Simulacros San Marcos. ¿En qué te puedo ayudar?';
     }
-    if (msg.includes('precio') || msg.includes('costo') || msg.includes('cuánto') || msg.includes('cuanto')) {
-      return 'El simulacro cuesta S/ 50 💪 Es 100% virtual. ¿Qué carrera postulas?';
+    if (msg.includes('precio') || msg.includes('costo') || msg.includes('cuánto') || msg.includes('cuanto')) {          return 'El simulacro cuesta S/ 19 💪 Es 100% virtual. ¿Qué carrera postulas?';
     }
     if (msg.includes('virtual') || msg.includes('presencial') || msg.includes('online')) {
       return '¡Sí, es 100% virtual! 📱 Lo rindes desde tu celular o PC. ¿Qué carrera postulas?';
     }
     if (msg.includes('medicina')) {
-      return 'Medicina es Área Biomédicas 🩺 Tenemos simulacro disponible. ¿Te interesa inscribirte? Son S/ 50.';
+      return 'Medicina es una de las carreras más competitivas 🩺 Tenemos simulacro disponible. ¿Te interesa inscribirte? Son S/ 19.';
     }
     if (msg.includes('inscrib') || msg.includes('apunt') || msg.includes('quiero pagar')) {
-      return '¡Genial! 🎉 Yapea S/ 50 al +51978069398 y envíame el comprobante por aquí.';
+      return '¡Genial! 🎉 Yapea S/ 19 al 948257314 a nombre de Pool Nuñez y envíame el comprobante por aquí.';
     }
     if (msg.includes('yape') || msg.includes('pago') || msg.includes('pagar')) {
-      return 'Yapea S/ 50 al +51978069398 📲 y mándame la captura. ¡En seguida confirmo!';
+      return 'Yapea S/ 19 al 948257314 a nombre de Pool Nuñez 📲 y mándame la captura. ¡En seguida confirmo!';
     }
 
     return '¡Hola! 👋 Soy el asesor de Simulacros San Marcos. ¿En qué te puedo ayudar?';

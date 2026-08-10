@@ -39,7 +39,8 @@ export class WebhooksService {
   ) {
     // Cuánto esperamos SIN mensajes antes de responder. Cada mensaje nuevo
     // reinicia el contador a 0. Configurable con AI_DEBOUNCE_MS (ms).
-    this.debounceMs = Number(this.config.get('AI_DEBOUNCE_MS', '30000')) || 30000;
+    // Default 40s (40000ms) para dar tiempo a que el cliente escriba completo.
+    this.debounceMs = Number(this.config.get('AI_DEBOUNCE_MS', '40000')) || 40000;
   }
 
 
@@ -212,7 +213,27 @@ export class WebhooksService {
 
       // Leer el stage fresco de la BD para evitar usar un stage desactualizado
       const freshConv = await this.conversations.findByPhone(phone);
-      const stage = (freshConv?.stage || conversation.stage || ConversationStage.NUEVA) as ConversationStage;
+      let stage = (freshConv?.stage || conversation.stage || ConversationStage.NUEVA) as ConversationStage;
+
+      // ── ANTI-PÉRDIDA DE CONTEXTO ──────────────────────────────────────────
+      // Si el cliente vuelve a escribir mucho después (ej. horas o al día
+      // siguiente), el stage de la BD puede estar "congelado" en una etapa
+      // intermedia del funnel. Para no forzar al bot a repetir preguntas ya
+      // respondidas, si pasó más de 2h desde el último mensaje y el stage no es
+      // INSCRITO/ESPERANDO_PAGO (estados que siguen siendo válidos), se resetea
+      // a un estado neutro y la IA retoma con TODO el historial como contexto.
+      const STALE_MS = 2 * 60 * 60 * 1000; // 2 horas
+      const lastMsgTime = freshConv?.lastMessageAt ? new Date(freshConv.lastMessageAt).getTime() : 0;
+      const isStale =
+        lastMsgTime > 0 &&
+        Date.now() - lastMsgTime > STALE_MS &&
+        stage !== ConversationStage.INSCRITO &&
+        stage !== ConversationStage.ESPERANDO_PAGO;
+      if (isStale) {
+        this.logger.log(`[STALE] ${phone}: ${Math.round((Date.now() - lastMsgTime) / 60000)}min sin actividad, reset de stage ${stage} → nuevo`);
+        stage = ConversationStage.NUEVA;
+        await this.conversations.setStage(conversation.id, ConversationStage.NUEVA);
+      }
       this.logger.log(`[STAGE] ${phone} → ${stage} | msg: "${combinedText.substring(0,50)}"`);
 
       // ── COMPROBANTE DE PAGO ───────────────────────────────────────────────
@@ -270,7 +291,19 @@ export class WebhooksService {
             name: contact.name, career: contact.career, funnelStage: 'inicio', greeting: this.getGreeting(), isAdMessage,
           });
           if (aiReply && !aiReply.includes('Soy el asesor de Simulacros San Marcos')) {
-            await this.sendSplitReply(conversation.id, phone, aiReply);
+            // Procesar marcadores [FLYER]/[PAGO] TAMBIÉN en la etapa NUEVA:
+            // si el cliente pide info del simulacro (fechas/precio/horarios),
+            // la IA responde con los datos + [FLYER] y el sistema envía la foto.
+            const parsed = this.parseMarkers(aiReply);
+            if (parsed.text) await this.sendSplitReply(conversation.id, phone, parsed.text);
+            if (parsed.flyer) {
+              await new Promise((r) => setTimeout(r, 1000));
+              await this.sendFlyerForDate(phone, parsed.flyerDate);
+              // El flyer se envía porque el cliente mostró interés en el simulacro
+              if (!contact.career) {
+                await this.conversations.setStage(conversation.id, ConversationStage.SALUDADA);
+              }
+            }
           } else {
             // Respaldo determinista si la IA falla o devuelve plantilla:
             // solo pregunta la carrera si es el mensaje del anuncio; un saludo
@@ -307,23 +340,7 @@ export class WebhooksService {
 
           if (parsed.flyer) {
             await new Promise((r) => setTimeout(r, 1000));
-            const activeSimulacros = await this.simulacros.findActive();
-            // Si la IA indicó una fecha ([FLYER:YYYY-MM-DD]), usar el flyer de ESE
-            // simulacro. Si no, el primer disponible con flyer.
-            const simFlyer = parsed.flyerDate
-              ? activeSimulacros.find((s) => s.date === parsed.flyerDate)?.flyerUrl
-              : activeSimulacros.find((s) => (s as any).flyerUrl)?.flyerUrl;
-            const globalFlyer = await this.settings.get('flyer_url');
-            const rawPath = simFlyer || globalFlyer;
-            if (rawPath?.trim()) {
-              const publicUrl = this.config.get('BACKEND_PUBLIC_URL', '').replace(/\/$/, '');
-              const base = publicUrl || `http://localhost:${this.config.get('PORT', '3001')}`;
-              const flyerUrl = rawPath.startsWith('http') ? rawPath : `${base}${rawPath}`;
-              try { await this.ycloud.sendImageMessage(phone, flyerUrl); }
-              catch (e) { this.logger.warn('Flyer no enviado: ' + e.message); }
-            } else {
-              this.logger.warn('[FLYER] solicitado pero no hay flyer configurado (simulacro ni setting flyer_url)');
-            }
+            await this.sendFlyerForDate(phone, parsed.flyerDate);
             // Bookkeeping para el panel de administración
             if (effectiveStage !== ConversationStage.ESPERANDO_PAGO && effectiveStage !== ConversationStage.INSCRITO) {
               await this.conversations.setStage(conversation.id, ConversationStage.CON_EXPERIENCIA);
@@ -409,6 +426,29 @@ export class WebhooksService {
 
     // Emitir evento SSE
     this.sse.emitNewMessage(conversationId, aiMsg);
+  }
+
+  // Enviar flyer de un simulacro específico (o del primero disponible)
+  private async sendFlyerForDate(phone: string, flyerDate?: string): Promise<void> {
+    const activeSimulacros = await this.simulacros.findActive();
+    const simFlyer = flyerDate
+      ? activeSimulacros.find((s) => s.date === flyerDate)?.flyerUrl
+      : activeSimulacros.find((s) => (s as any).flyerUrl)?.flyerUrl;
+    const globalFlyer = await this.settings.get('flyer_url');
+    const rawPath = simFlyer || globalFlyer;
+    if (rawPath?.trim()) {
+      const publicUrl = this.config.get('BACKEND_PUBLIC_URL', '').replace(/\/$/, '');
+      const base = publicUrl || `http://localhost:${this.config.get('PORT', '3001')}`;
+      const flyerUrl = rawPath.startsWith('http') ? rawPath : `${base}${rawPath}`;
+      try {
+        await this.ycloud.sendImageMessage(phone, flyerUrl);
+        this.logger.log(`Flyer enviado a ${phone}`);
+      } catch (e) {
+        this.logger.warn('Flyer no enviado: ' + e.message);
+      }
+    } else {
+      this.logger.warn('[FLYER] solicitado pero no hay flyer configurado (simulacro ni setting flyer_url)');
+    }
   }
 
   // Saludo según la hora del día (hora de Perú UTC-5)
