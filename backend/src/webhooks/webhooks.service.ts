@@ -127,7 +127,7 @@ export class WebhooksService {
         // vuelva a considerar este número como "inicio de ventana" (typing indicator).
         this.debounceTimers.delete(phone);
         resolve();
-      }, 7000);
+      }, 13000);
       this.debounceTimers.set(phone, timer);
     });
 
@@ -335,13 +335,16 @@ export class WebhooksService {
     }
   }
 
-  // Enviar respuesta con soporte de || para 2 mensajes separados
+  // Enviar respuesta con soporte de || para VARIOS mensajes separados
+  // (así la IA puede responder como una persona real: frase por frase).
   private async sendSplitReply(conversationId: string, phone: string, text: string): Promise<void> {
     const parts = text.split('||').map((p) => p.trim()).filter(Boolean);
-    await this.sendAndSaveReply(conversationId, phone, parts[0]);
-    if (parts[1]) {
-      await new Promise((r) => setTimeout(r, 1200));
-      await this.sendAndSaveReply(conversationId, phone, parts[1]);
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) {
+        // Pequeña pausa natural entre mensajes (como una persona escribiendo)
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      await this.sendAndSaveReply(conversationId, phone, parts[i]);
     }
   }
 

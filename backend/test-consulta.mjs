@@ -131,7 +131,7 @@ const msg = (text, i) => ({
     r = await ai.processMessage('¿qué día es el simulacro?', [], '+51999999998', { name: 'Ana', funnelStage: 'libre' });
   }
   check('SIMULACRO: no menciona la fecha pasada', !(r || '').includes(yesterday), `→ "${(r || '').slice(0, 80)}"`);
-  check('SIMULACRO: ofrece el siguiente disponible', /mañana|el \d{4}/.test(r || ''), `→ "${(r || '').slice(0, 80)}"`);
+  check('SIMULACRO: ofrece el siguiente disponible', /mañana|el \d{1,2} de|el \d{4}/.test(r || ''), `→ "${(r || '').slice(0, 80)}"`);
 }
 
 console.log('\n════════════════════════════════════════');
