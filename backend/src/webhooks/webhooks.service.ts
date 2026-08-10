@@ -16,7 +16,10 @@ export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
 
   // Debounce: timer por número de teléfono para esperar que el cliente termine de escribir
+  // (30s por defecto; cada mensaje nuevo reinicia el contador). Ver this.debounceMs.
   private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
+  // Tiempo de espera del debounce en milisegundos (default 30000 = 30s).
+  private readonly debounceMs: number;
   // Guardar el último messageId por teléfono para el typing indicator
   private readonly lastMessageId = new Map<string, string>();
   // Acumular todos los mensajes del periodo de debounce por teléfono
@@ -33,7 +36,11 @@ export class WebhooksService {
     private readonly sse: SseService,
     private readonly config: ConfigService,
     private readonly simulacros: SimulacrosService,
-  ) {}
+  ) {
+    // Cuánto esperamos SIN mensajes antes de responder. Cada mensaje nuevo
+    // reinicia el contador a 0. Configurable con AI_DEBOUNCE_MS (ms).
+    this.debounceMs = Number(this.config.get('AI_DEBOUNCE_MS', '30000')) || 30000;
+  }
 
 
   // Procesar webhook de YCloud
@@ -109,8 +116,10 @@ export class WebhooksService {
       (this as any)._stageSnapshot[phone] = convSnapshot?.stage || ConversationStage.NUEVA;
     }
 
-    // Debounce: solo el ÚLTIMO mensaje en llegar dispara la respuesta.
-    // Cada mensaje cancela el timer anterior y crea uno nuevo.
+    // Debounce de 30 segundos (configurable con AI_DEBOUNCE_MS):
+    // cada mensaje nuevo cancela el timer anterior, reinicia el contador a 0 y
+    // crea uno nuevo. La IA responde UNA sola vez, con TODOS los mensajes
+    // combinados, cuando el cliente deja de escribir 30s seguidos.
     // Al cancelar el timer anterior, la Promise de ese mensaje queda pendiente
     // para siempre — por eso usamos un flag (token) en lugar de Promise.
     const myToken = Date.now() + Math.random(); // token único para este mensaje
@@ -127,7 +136,7 @@ export class WebhooksService {
         // vuelva a considerar este número como "inicio de ventana" (typing indicator).
         this.debounceTimers.delete(phone);
         resolve();
-      }, 13000);
+      }, this.debounceMs);
       this.debounceTimers.set(phone, timer);
     });
 
@@ -258,15 +267,18 @@ export class WebhooksService {
         // la responde brevemente y luego lleva la conversación al guion.
         case ConversationStage.NUEVA: {
           const aiReply = await this.ai.processMessage(combinedText, history as any, phone, {
-            name: contact.name, funnelStage: 'inicio', greeting: this.getGreeting(), isAdMessage,
+            name: contact.name, career: contact.career, funnelStage: 'inicio', greeting: this.getGreeting(), isAdMessage,
           });
           if (aiReply && !aiReply.includes('Soy el asesor de Simulacros San Marcos')) {
             await this.sendSplitReply(conversation.id, phone, aiReply);
           } else {
-            // Respaldo determinista si la IA falla: saludo según hora de Perú + pregunta la carrera
+            // Respaldo determinista si la IA falla o devuelve plantilla:
+            // solo pregunta la carrera si es el mensaje del anuncio; un saludo
+            // plano se responde con saludo y oferta de ayuda.
             await this.sendAndSaveReply(conversation.id, phone, `${this.getGreeting()} 😊`);
             await new Promise((r) => setTimeout(r, 1200));
-            await this.sendAndSaveReply(conversation.id, phone, '¿A qué carrera postulas? 😊');
+            await this.sendAndSaveReply(conversation.id, phone,
+              isAdMessage ? '¿A qué carrera postulas? 😊' : '¿En qué te puedo ayudar? 😊');
           }
           await this.conversations.setStage(conversation.id, ConversationStage.SALUDADA);
           await this.contacts.update(contact.id, { status: ContactStatus.INTERESADO });
@@ -278,7 +290,12 @@ export class WebhooksService {
         default: {
           const funnelStage =
             effectiveStage === ConversationStage.ESPERANDO_PAGO ? 'esperando_pago' :
-            effectiveStage === ConversationStage.INSCRITO ? 'inscrito' : 'libre';
+            effectiveStage === ConversationStage.INSCRITO ? 'inscrito' :
+            effectiveStage === ConversationStage.CON_EXPERIENCIA ? 'tiene_experiencia' :
+            effectiveStage === ConversationStage.CON_CARRERA ||
+            (effectiveStage === ConversationStage.SALUDADA && contact.career) ? 'tiene_carrera' :
+            effectiveStage === ConversationStage.SALUDADA ? 'sin_carrera' :
+            'libre';
 
           const aiReply = await this.ai.processMessage(combinedText, history as any, phone, {
             name: contact.name, career: contact.career, funnelStage,

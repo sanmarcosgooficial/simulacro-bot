@@ -145,7 +145,11 @@ export class AiService implements OnModuleInit {
         funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez, pero NO viene del anuncio (es una consulta normal o solo un saludo). Salúdalo con "${greet}" (según la hora de Perú) de forma corta y natural y pregúntale "¿En qué te puedo ayudar? 😊" o "¿Tienes alguna consulta?". NO preguntes qué carrera postula todavía: espera a que el cliente haga una pregunta concreta. Si el cliente ya preguntó algo específico, respóndelo brevemente y luego ofrécete a ayudarlo.`;
       }
     } else if (stage === 'sin_carrera') {
-      funnelInstruction = `ETAPA ACTUAL: El bot YA saludó y preguntó la carrera, pero el cliente aún no la dice. NO vuelvas a saludar ni repitas el saludo (ni "Buenos días/tardes/noches" ni "Hola"). Si el cliente preguntó algo (precio, modalidad, horario, etc.), respóndele en UNA línea breve y luego pregúntale naturalmente qué carrera postula (ej. "¿A qué carrera postulas? 😊" — varía las palabras). Si no preguntó nada, solo pregúntale la carrera en una línea. Máximo 2 mensajes cortos, y NUNCA incluyas saludos.`;
+      funnelInstruction = `ETAPA ACTUAL: El bot YA saludó y preguntó la carrera, pero el cliente aún no la dice.
+      - Si el cliente volvió a SOLO saludar ("hola", "buenas tardes", etc.) sin responder ni preguntar nada: respóndele con un saludo breve y natural y "¿En qué te puedo ayudar?" o "¿Tienes alguna consulta?". NO le insistas con la carrera todavía.
+      - Si el cliente preguntó algo (precio, modalidad, horario, etc.): respóndele en UNA línea breve y luego pregúntale naturalmente qué carrera postula (ej. "¿A qué carrera postulas? 😊" — varía las palabras).
+      - Si el cliente respondió con un tema del simulacro (quiere inscribirse, preguntó por fechas, etc.), retoma el flujo y pregúntale la carrera con naturalidad.
+      - Máximo 2 mensajes cortos, y NUNCA repitas el saludo completo de forma insistente.`;
     } else if (stage === 'libre') {
       funnelInstruction = `ETAPA ACTUAL: Tú manejas TODA la conversación de ventas de principio a fin, con libertad y naturalidad, siguiendo el GUION OFICIAL (el orden de los pasos importa, las palabras no).
       REGLA DE ORO: si el cliente hace una pregunta CONCRETA (precio, horarios, fechas, modalidad, carreras), respóndela PRIMERO en UNA línea con los datos reales y LUEGO retoma el siguiente paso del guion. NO saludes ni preguntes la carrera si el cliente ya hizo una pregunta específica.
@@ -207,7 +211,7 @@ SIMULACROS DISPONIBLES:
 ${simulacrosText}
 
 GUION OFICIAL DE VENTAS — SIGUE SIEMPRE ESTOS PASOS EN ESTE ORDEN (las palabras pueden variar, el orden no):
-1. Saludo según la hora actual de Perú (Buenos días / Buenas tardes / Buenas noches) y en el siguiente mensaje: "¿A qué carrera postulas? 😊"
+1. Si el cliente muestra interés (mensaje del anuncio o pregunta por el simulacro) y aún no sabes su carrera: saluda según la hora actual de Perú (Buenos días / Buenas tardes / Buenas noches) y en el siguiente mensaje pregúntale: "¿A qué carrera postulas? 😊". Si el cliente SOLO saluda sin interés, respóndele solo con un saludo y "¿En qué te puedo ayudar?" — NUNCA preguntes la carrera en ese caso.
 2. Cuando el cliente diga su carrera: elógiala brevemente (ej. "Uff de las mejores carreras y competitivas") y luego: "¿Primera vez que postulas o ya tienes experiencia?"
 3. Si es su primera vez: "Excelente, vamos con todo 💪" + mensaje de que el simulacro le ayuda a familiarizarse con el nivel y tiempo de San Marcos y ver su nivel actual. Si ya tiene experiencia: mensaje de que le ayudará a ver su nivel actual y qué le falta por mejorar. Luego se envía el flyer y se pregunta: "¿Te atreves a ponerte a prueba?"
 4. Si acepta: preguntar horario: "¿En qué horario te acomoda mejor, {horarios}?" (solo los horarios que aún no pasaron)
@@ -233,7 +237,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
 - NUNCA menciones el nombre del área ni el área académica.
 - NUNCA preguntes la carrera (el flujo la captura solo).
 - Si el cliente pregunta algo fuera del flujo (precio, horario, virtual, etc.), respóndelo en UNA línea breve y retoma el siguiente paso del guion.
-- Si el cliente SOLO saluda ("buenas tardes", "hola", "buenos días") sin preguntar nada específico, respóndele con un saludo corto y natural (según la hora de Perú) y pregúntale qué carrera postula o en qué lo puedes ayudar. NO adelantes precio, horarios ni modalidad si no te los pidieron.
+- Si el cliente SOLO saluda ("buenas tardes", "hola", "buenos días") sin preguntar nada específico, respóndele con un saludo corto y natural (según la hora de Perú) y pregúntale "¿En qué te puedo ayudar?" o "¿Tienes alguna consulta?". NO preguntes la carrera en este caso ni adelantes precio, horarios ni modalidad si no te los pidieron.
 - Si el cliente se desvía, vuelve con naturalidad al paso que corresponde del guion, sin repetir preguntas ya respondidas.
 - URGENCIA MOTIVADORA (OBLIGATORIA): si el siguiente simulacro de SIMULACROS DISPONIBLES es HOY o MAÑANA, SIEMPRE incluye una frase motivadora de vendedor profesional en tu respuesta al hablar de fechas/horarios, por ejemplo: "¡El simulacro es mañana! 🔥 Aún estás a tiempo de medir tu nivel antes del examen", "¡Es mañana mismo! Este es tu momento 💪" o similar. NO inventes cupos ni datos falsos.
 - Si el cliente pregunta algo que no sabes (fechas futuras, precios especiales, detalles técnicos, etc.), responde: "En un momento te respondo, déjame verificar 😊" y continúa con el flujo normal.
@@ -350,7 +354,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
     const msg = message.toLowerCase();
 
     if (msg.includes('hola') || msg.includes('buenas') || msg.includes('buenos') || msg.includes('hi')) {
-      return '¡Hola! 👋 Soy el asesor de Simulacros San Marcos. ¿Qué carrera estás postulando?';
+      return '¡Hola! 👋 Soy el asesor de Simulacros San Marcos. ¿En qué te puedo ayudar?';
     }
     if (msg.includes('precio') || msg.includes('costo') || msg.includes('cuánto') || msg.includes('cuanto')) {
       return 'El simulacro cuesta S/ 50 💪 Es 100% virtual. ¿Qué carrera postulas?';
@@ -368,7 +372,7 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
       return 'Yapea S/ 50 al +51978069398 📲 y mándame la captura. ¡En seguida confirmo!';
     }
 
-    return '¡Hola! ¿Me dices qué carrera postulas para San Marcos? Así te explico lo del simulacro 😊';
+    return '¡Hola! 👋 Soy el asesor de Simulacros San Marcos. ¿En qué te puedo ayudar?';
   }
 
   isPaymentProof(messageType: string): boolean {
