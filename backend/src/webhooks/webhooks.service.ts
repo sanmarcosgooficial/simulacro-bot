@@ -296,9 +296,12 @@ export class WebhooksService {
             // la IA responde con los datos + [FLYER] y el sistema envía la foto.
             const parsed = this.parseMarkers(aiReply);
             if (parsed.text) await this.sendSplitReply(conversation.id, phone, parsed.text);
-            if (parsed.flyer) {
+            // Detectar también la fecha mencionada en el texto (aunque la IA olvide el marcador)
+            const activeSimulacros = await this.simulacros.findActive();
+            const flyerDate = parsed.flyerDate || this.detectMentionedDate(aiReply, activeSimulacros);
+            if (parsed.flyer || flyerDate) {
               await new Promise((r) => setTimeout(r, 1000));
-              await this.sendFlyerForDate(phone, parsed.flyerDate);
+              await this.sendFlyerForDate(phone, flyerDate);
               // El flyer se envía porque el cliente mostró interés en el simulacro
               if (!contact.career) {
                 await this.conversations.setStage(conversation.id, ConversationStage.SALUDADA);
@@ -338,11 +341,22 @@ export class WebhooksService {
           const parsed = this.parseMarkers(aiReply);
           if (parsed.text) await this.sendSplitReply(conversation.id, phone, parsed.text);
 
-          if (parsed.flyer) {
+          // Detectar si la respuesta menciona la fecha (en español) de un simulacro
+          // activo, aunque la IA olvide el marcador [FLYER:YYYY-MM-DD]: el sistema
+          // envía igual el flyer de ESA fecha. Preferencia: fecha explícita del marcador.
+          const activeSimulacros = await this.simulacros.findActive();
+          const flyerDate = parsed.flyerDate || this.detectMentionedDate(aiReply, activeSimulacros);
+          const shouldSendFlyer = parsed.flyer || !!flyerDate;
+
+          if (shouldSendFlyer) {
             await new Promise((r) => setTimeout(r, 1000));
-            await this.sendFlyerForDate(phone, parsed.flyerDate);
-            // Bookkeeping para el panel de administración
-            if (effectiveStage !== ConversationStage.ESPERANDO_PAGO && effectiveStage !== ConversationStage.INSCRITO) {
+            // Enviar el flyer de la fecha detectada (marcador o mención en el texto),
+            // o del primer disponible con flyer si no hay fecha.
+            await this.sendFlyerForDate(phone, flyerDate);
+            // Bookkeeping para el panel: solo avanza si el flyer se envió en la etapa de
+            // presentación del valor (antes de preguntar el horario). Nunca retrocede
+            // etapas avanzadas (esperando pago, inscrito, etc.).
+            if (effectiveStage === ConversationStage.SALUDADA || effectiveStage === ConversationStage.CON_CARRERA) {
               await this.conversations.setStage(conversation.id, ConversationStage.CON_EXPERIENCIA);
             }
           }
@@ -384,6 +398,40 @@ export class WebhooksService {
       }
       await this.sendAndSaveReply(conversationId, phone, parts[i]);
     }
+  }
+
+  // Detectar en el texto de la IA la fecha (en español, ej. "10 de agosto") de un
+  // simulacro activo, para enviar su flyer aunque la IA no haya emitido el marcador
+  // [FLYER:YYYY-MM-DD]. Retorna la fecha ISO (YYYY-MM-DD) o null.
+  private detectMentionedDate(text: string, simulacros: any[]): string | null {
+    const normalize = (s: string) =>
+      s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const normalized = normalize(text);
+    for (const sim of simulacros) {
+      // Formato español ("10 de agosto") y formato ISO ("2026-08-10", que la IA
+      // puede copiar tal cual de SIMULACROS DISPONIBLES).
+      const labels = [this.dateInSpanish(sim.date), sim.date].filter(Boolean);
+      for (const rawLabel of labels) {
+        const label = normalize(rawLabel);
+        if (!label) continue;
+        const idx = normalized.indexOf(label);
+        // Evitar falsos positivos tipo "19 de agosto" matcheando "9 de agosto":
+        // el carácter previo no debe ser un dígito.
+        if (idx >= 0) {
+          const before = normalized[idx - 1];
+          if (!before || !/\d/.test(before)) return sim.date;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Formatear una fecha ISO (YYYY-MM-DD) en español: "10 de agosto"
+  private dateInSpanish(iso: string): string {
+    const [y, m, d] = (iso || '').split('-');
+    if (!y || !m || !d) return '';
+    const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    return `${parseInt(d, 10)} de ${meses[parseInt(m, 10) - 1] || ''}`;
   }
 
   // Separar los marcadores de acción del texto que ve el cliente.
@@ -447,7 +495,7 @@ export class WebhooksService {
         this.logger.warn('Flyer no enviado: ' + e.message);
       }
     } else {
-      this.logger.warn('[FLYER] solicitado pero no hay flyer configurado (simulacro ni setting flyer_url)');
+      this.logger.warn(`[FLYER] solicitado${flyerDate ? ` (fecha ${flyerDate})` : ''} pero no hay flyer configurado: sube el flyer del simulacro o define flyer_url en ajustes`);
     }
   }
 
