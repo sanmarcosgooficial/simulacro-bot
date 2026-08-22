@@ -372,6 +372,12 @@ export class WebhooksService {
             }
           }
 
+          // [PROMO_FLYER] → enviar el flyer de la promo (las 3 fechas)
+          if (parsed.promoFlyer) {
+            await new Promise((r) => setTimeout(r, 800));
+            await this.sendPromoFlyer(phone);
+          }
+
           if (parsed.pago) {
             await this.conversations.setStage(conversation.id, ConversationStage.ESPERANDO_PAGO);
             await this.contacts.update(contact.id, { status: ContactStatus.ESPERANDO_PAGO });
@@ -448,12 +454,18 @@ export class WebhooksService {
   // Separar los marcadores de acción del texto que ve el cliente.
   // [FLYER] envía el flyer del primer disponible; [FLYER:YYYY-MM-DD] envía
   // el flyer del simulacro con ESA fecha exacta (el que la IA está ofreciendo).
-  private parseMarkers(text: string): { text: string; flyer: boolean; pago: boolean; flyerDate?: string } {
+  // [PROMO_FLYER] envía el flyer de la promo (con las 3 fechas).
+  private parseMarkers(text: string): { text: string; flyer: boolean; pago: boolean; flyerDate?: string; promoFlyer: boolean } {
     const flyer = /\[FLYER(:\d{4}-\d{2}-\d{2})?\]/i.test(text);
     const pago = /\[PAGO\]/i.test(text);
+    const promoFlyer = /\[PROMO_FLYER\]/i.test(text);
     const flyerDateMatch = text.match(/\[FLYER:(\d{4}-\d{2}-\d{2})\]/i);
-    const clean = text.replace(/\[FLYER(:\d{4}-\d{2}-\d{2})?\]/gi, '').replace(/\[PAGO\]/gi, '').trim();
-    return { text: clean, flyer, pago, flyerDate: flyerDateMatch?.[1] };
+    const clean = text
+      .replace(/\[FLYER(:\d{4}-\d{2}-\d{2})?\]/gi, '')
+      .replace(/\[PAGO\]/gi, '')
+      .replace(/\[PROMO_FLYER\]/gi, '')
+      .trim();
+    return { text: clean, flyer, pago, flyerDate: flyerDateMatch?.[1], promoFlyer };
   }
 
   private async sendAndSaveReply(
@@ -485,6 +497,24 @@ export class WebhooksService {
 
     // Emitir evento SSE
     this.sse.emitNewMessage(conversationId, aiMsg);
+  }
+
+  // Enviar el flyer de la promo (con las 3 fechas), configurado en ajustes
+  private async sendPromoFlyer(phone: string): Promise<void> {
+    const rawPath = await this.settings.get('promo_flyer_url');
+    if (!rawPath?.trim()) {
+      this.logger.warn('[PROMO_FLYER] solicitado pero no hay flyer de promo configurado en ajustes');
+      return;
+    }
+    const publicUrl = this.config.get('BACKEND_PUBLIC_URL', '').replace(/\/$/, '');
+    const base = publicUrl || `http://localhost:${this.config.get('PORT', '3001')}`;
+    const flyerUrl = rawPath.startsWith('http') ? rawPath : `${base}${rawPath}`;
+    try {
+      await this.ycloud.sendImageMessage(phone, flyerUrl);
+      this.logger.log(`Flyer de promo enviado a ${phone}`);
+    } catch (e) {
+      this.logger.warn('Flyer de promo no enviado: ' + e.message);
+    }
   }
 
   // Enviar flyer de un simulacro específico (o del primero disponible)

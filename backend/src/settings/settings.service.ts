@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS = [
   { key: 'flyer_url', value: '', description: 'URL del flyer del simulacro' },
   { key: 'agent_enabled', value: 'true', description: 'Agente IA activo' },
   { key: 'welcome_message', value: '¡Hola! 👋 Soy el asistente de Simulacros San Marcos. ¿En qué te puedo ayudar?', description: 'Mensaje de bienvenida' },
+  { key: 'promo_enabled', value: 'false', description: 'Activar promo: inscríbete al 2do simulacro y el 3ro es gratis' },
+  { key: 'promo_flyer_url', value: '', description: 'URL del flyer de la promo (con las 3 fechas)' },
 ];
 
 @Injectable()

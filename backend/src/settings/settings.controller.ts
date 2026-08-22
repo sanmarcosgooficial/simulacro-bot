@@ -46,6 +46,28 @@ export class SettingsController {
     return this.settingsService.clearTestData(phone);
   }
 
+  // Subir flyer de la promo (con las 3 fechas)
+  @Post('upload-promo-flyer')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(new BadRequestException('Solo se permiten imágenes'), false);
+        }
+        cb(null, true);
+      },
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async uploadPromoFlyer(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    const url = await this.r2.uploadFile(file, 'flyer-promo');
+    await this.settingsService.set('promo_flyer_url', url);
+    return { url, message: 'Flyer de promo subido correctamente' };
+  }
+
   // Subir flyer global
   @Post('upload-flyer')
   @UseGuards(JwtAuthGuard)

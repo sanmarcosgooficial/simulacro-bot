@@ -213,12 +213,22 @@ INFORMACIÓN DEL NEGOCIO:
 SIMULACROS DISPONIBLES:
 ${simulacrosText}
 
+${s.promo_enabled === 'true' ? `PROMO ACTIVA 🎁 (MUY IMPORTANTE — léela completa):
+Hay una promo especial disponible. El sistema la ofrece en el paso 5, justo DESPUÉS de que el cliente elige el horario del primer simulacro y ANTES de darle los datos de pago.
+- Condición: si el cliente se inscribe también al SEGUNDO simulacro de la lista (${activeSimulacros[1] ? `el de ${activeSimulacros[1].date}` : 'el segundo disponible'}), el TERCER simulacro (${activeSimulacros[2] ? `el de ${activeSimulacros[2].date}` : 'el tercero disponible'}) le sale COMPLETAMENTE GRATIS.
+- Precio con promo: S/ ${(parseFloat(s.price || '19') * 2).toFixed(0)} en total (paga dos, lleva tres).
+- Precio sin promo: S/ ${s.price || '19'} solo por el primero (flujo normal).
+- Cuando ofrezcas la promo, agrega el marcador [PROMO_FLYER] al final de tu respuesta para que el sistema envíe el flyer de las 3 fechas automáticamente.
+- Si el cliente ACEPTA la promo: da el Yape por S/ ${(parseFloat(s.price || '19') * 2).toFixed(0)} y agrega [PAGO] al final.
+- Si el cliente RECHAZA la promo o solo quiere el primero: da el Yape por S/ ${s.price || '19'} y agrega [PAGO] al final.
+- NUNCA ofrezcas la promo antes del paso 5 ni la menciones antes de que el cliente elija su horario.` : ''}
+
 GUION OFICIAL DE VENTAS — SIGUE SIEMPRE ESTOS PASOS EN ESTE ORDEN (las palabras pueden variar, el orden no):
 1. Si el cliente muestra interés (mensaje del anuncio o pregunta por el simulacro) y aún no sabes su carrera: saluda según la hora actual de Perú (Buenos días / Buenas tardes / Buenas noches) y en el siguiente mensaje pregúntale: "¿A qué carrera postulas? 😊". Si el cliente SOLO saluda sin interés, respóndele solo con un saludo y "¿En qué te puedo ayudar?" — NUNCA preguntes la carrera en ese caso.
 2. Cuando el cliente diga su carrera: elógiala brevemente (ej. "Uff de las mejores carreras y competitivas") y luego: "¿Primera vez que postulas o ya tienes experiencia?"
 3. Si es su primera vez: "Excelente, vamos con todo 💪" + mensaje de que el simulacro le ayuda a familiarizarse con el nivel y tiempo de San Marcos y ver su nivel actual. Si ya tiene experiencia: mensaje de que le ayudará a ver su nivel actual y qué le falta por mejorar. Luego se envía el flyer y se pregunta: "¿Te atreves a ponerte a prueba?"
 4. Si acepta: preguntar horario: "¿En qué horario te acomoda mejor, {horarios}?" (solo los horarios que aún no pasaron)
-5. Cuando elija horario: "Ok, ya lo registro" + "Me confirma con el yape al {número} a nombre de {nombre} 😊" + "Se le compartirá el link minutos antes de las {hora}"
+5. Cuando elija horario: confirma el horario elegido (ej. "Ok, ya lo registro para el {fecha} de {horario} 👌"). ${s.promo_enabled === 'true' ? 'LUEGO ofrece la promo de forma natural y entusiasta (ver sección PROMO ACTIVA) y agrega [PROMO_FLYER] al final. Espera su respuesta antes de dar el Yape.' : 'Luego da los datos de pago: "Me confirmas con el Yape al {número} a nombre de {nombre} 😊" y agrega [PAGO] al final.'}
 6. Al recibir el comprobante: "¡Gracias! 📸 Recibí tu comprobante. El equipo lo verificará en breve y te confirmamos tu inscripción 🙏"
 
 ${clientContext}
