@@ -303,6 +303,7 @@ export default function SimulacrosPage() {
   const [promoFlyerPreview, setPromoFlyerPreview] = useState('');
   const [uploadingPromoFlyer, setUploadingPromoFlyer] = useState(false);
   const [promoSaved, setPromoSaved] = useState(false);
+  const [promoFlyerError, setPromoFlyerError] = useState('');
 
   const fetchSimulacros = useCallback(async () => {
     setLoading(true);
@@ -498,6 +499,8 @@ export default function SimulacrosPage() {
                 onClick={async () => {
                   if (!promoFlyerFile) return;
                   setUploadingPromoFlyer(true);
+                  setPromoFlyerError('');
+                  setPromoSaved(false);
                   try {
                     const formData = new FormData();
                     formData.append('file', promoFlyerFile);
@@ -506,13 +509,17 @@ export default function SimulacrosPage() {
                       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
                       body: formData,
                     });
+                    if (!res.ok) {
+                      const err = await res.json().catch(() => ({}));
+                      throw new Error(err?.message || `Error ${res.status}`);
+                    }
                     const data = await res.json();
                     setPromoFlyerPreview(data.url);
                     setPromoFlyerFile(null);
                     setPromoSaved(true);
-                    setTimeout(() => setPromoSaved(false), 3000);
-                  } catch {
-                    alert('Error subiendo el flyer de promo');
+                    setTimeout(() => setPromoSaved(false), 4000);
+                  } catch (e: any) {
+                    setPromoFlyerError('Error al subir: ' + e.message);
                   } finally {
                     setUploadingPromoFlyer(false);
                   }
@@ -523,7 +530,8 @@ export default function SimulacrosPage() {
               </button>
             )}
 
-            {promoSaved && <p className="text-xs text-green-600">✓ Flyer de promo guardado</p>}
+            {promoSaved && <p className="text-xs text-green-600">✓ Flyer de promo guardado correctamente</p>}
+            {promoFlyerError && <p className="text-xs text-red-500">{promoFlyerError}</p>}
             {promoFlyerPreview && !promoFlyerFile && !promoSaved && (
               <p className="text-xs text-gray-400">✓ Flyer configurado</p>
             )}

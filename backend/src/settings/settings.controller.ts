@@ -48,7 +48,6 @@ export class SettingsController {
 
   // Subir flyer de la promo (con las 3 fechas)
   @Post('upload-promo-flyer')
-  @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
