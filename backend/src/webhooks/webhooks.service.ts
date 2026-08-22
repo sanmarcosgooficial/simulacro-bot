@@ -39,8 +39,8 @@ export class WebhooksService {
   ) {
     // Cuánto esperamos SIN mensajes antes de responder. Cada mensaje nuevo
     // reinicia el contador a 0. Configurable con AI_DEBOUNCE_MS (ms).
-    // Default 40s (40000ms) para dar tiempo a que el cliente escriba completo.
-    this.debounceMs = Number(this.config.get('AI_DEBOUNCE_MS', '40000')) || 40000;
+    // Default 30s (30000ms) para dar tiempo a que el cliente escriba completo.
+    this.debounceMs = Number(this.config.get('AI_DEBOUNCE_MS', '30000')) || 30000;
   }
 
 
@@ -258,16 +258,27 @@ export class WebhooksService {
       // ── MÁQUINA DE ESTADOS ────────────────────────────────────────────────
       const history = await this.conversations.getChatHistory(conversation.id, 40);
 
-      // Detección estricta del mensaje del anuncio:
-      // "Hola, quiero probarme en el Simulacro de San Marcos ⚕️!" — el mensaje
-      // DEBE contener "quiero probarme" + "simulacro"/"san marcos".
-      // Primero se limpian emojis/emoticonos (y variantes unicode) para que
-      // el texto se lea puro: si el cliente manda el anuncio con emojis
-      // (ej. "...San Marcos🧑⚕️!"), la detección funciona igual.
+      // Detección estricta del mensaje del anuncio. Se aceptan las dos variantes:
+      //   1. "Hola, quiero probarme en el Simulacro de San Marcos🧑‍⚕️!"
+      //   2. "¡Hola! Quiero ponerme a prueba en el Simulacro San Marcos 🎯"
+      // Se limpian emojis/emoticonos antes de comparar para que variantes
+      // con/sin emoji sean equivalentes.
       const tLower = combinedText
         .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu, '')
         .toLowerCase();
-      const isAdMessage = tLower.includes('quiero probarme') && /simulacro|san marcos/.test(tLower);
+      const isAdMessage =
+        (tLower.includes('quiero probarme') && /simulacro|san marcos/.test(tLower)) ||
+        (tLower.includes('quiero ponerme a prueba') && /simulacro|san marcos/.test(tLower)) ||
+        tLower.includes('quiero mas informacion') ||
+        tLower.includes('quiero más información');
+
+      // FILTRO: si el contacto no tiene conversación activa (stage NUEVA) y el
+      // mensaje NO es uno de los dos mensajes del anuncio, se ignora por completo.
+      // Solo se inicia el flujo cuando el cliente llega desde el anuncio de Meta.
+      if (stage === ConversationStage.NUEVA && !isAdMessage) {
+        this.logger.log(`[FILTRO] Mensaje ignorado de ${phone} (no es mensaje del anuncio): "${combinedText.substring(0, 60)}"`);
+        return;
+      }
 
       // Si llega el mensaje del anuncio con la conversación estancada en el inicio
       // (etapa SALUDADA/CON_CARRERA sin avanzar), reiniciamos el flujo para empezar
