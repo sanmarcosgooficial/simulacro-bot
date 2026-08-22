@@ -95,6 +95,13 @@ export const settingsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  uploadPromoFlyer: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/settings/upload-promo-flyer', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // SSE URL

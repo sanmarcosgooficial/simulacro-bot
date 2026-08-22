@@ -504,17 +504,8 @@ export default function SimulacrosPage() {
                   try {
                     const formData = new FormData();
                     formData.append('file', promoFlyerFile);
-                    const res = await fetch(`${API_BASE}/settings/upload-promo-flyer`, {
-                      method: 'POST',
-                      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-                      body: formData,
-                    });
-                    if (!res.ok) {
-                      const err = await res.json().catch(() => ({}));
-                      throw new Error(err?.message || `Error ${res.status}`);
-                    }
-                    const data = await res.json();
-                    setPromoFlyerPreview(data.url);
+                    const res = await settingsApi.uploadPromoFlyer(promoFlyerFile);
+                    setPromoFlyerPreview(res.data.url);
                     setPromoFlyerFile(null);
                     setPromoSaved(true);
                     setTimeout(() => setPromoSaved(false), 4000);
