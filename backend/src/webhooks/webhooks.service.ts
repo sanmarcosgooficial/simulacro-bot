@@ -310,7 +310,7 @@ export class WebhooksService {
             // Detectar también la fecha mencionada en el texto (aunque la IA olvide el marcador)
             const activeSimulacros = await this.simulacros.findActive();
             const flyerDate = parsed.flyerDate || this.detectMentionedDate(aiReply, activeSimulacros);
-            if (parsed.flyer || flyerDate) {
+            if (!parsed.promoFlyer && (parsed.flyer || flyerDate)) {
               await new Promise((r) => setTimeout(r, 1000));
               await this.sendFlyerForDate(phone, flyerDate);
               // El flyer se envía porque el cliente mostró interés en el simulacro
@@ -357,7 +357,10 @@ export class WebhooksService {
           // envía igual el flyer de ESA fecha. Preferencia: fecha explícita del marcador.
           const activeSimulacros = await this.simulacros.findActive();
           const flyerDate = parsed.flyerDate || this.detectMentionedDate(aiReply, activeSimulacros);
-          const shouldSendFlyer = parsed.flyer || !!flyerDate;
+          // Si la IA emitió [PROMO_FLYER], NO enviamos el flyer normal aunque la IA
+          // mencione una fecha en el texto: evita que se mande el flyer del 1er simulacro
+          // en vez del flyer de las 3 fechas cuando el bot ofrece la promo.
+          const shouldSendFlyer = !parsed.promoFlyer && (parsed.flyer || !!flyerDate);
 
           if (shouldSendFlyer) {
             await new Promise((r) => setTimeout(r, 1000));
@@ -372,9 +375,10 @@ export class WebhooksService {
             }
           }
 
-          // [PROMO_FLYER] → enviar el flyer de la promo (las 3 fechas)
+          // [PROMO_FLYER] → enviar el flyer de la promo (las 3 fechas).
+          // Va DESPUÉS del texto de la IA, nunca junto al flyer normal.
           if (parsed.promoFlyer) {
-            await new Promise((r) => setTimeout(r, 800));
+            await new Promise((r) => setTimeout(r, 1000));
             await this.sendPromoFlyer(phone);
           }
 
