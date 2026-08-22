@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { simulacrosApi, API_BASE } from '@/lib/api';
+import { simulacrosApi, settingsApi, API_BASE } from '@/lib/api';
 
 // Construye URL absoluta para imágenes guardadas como path relativo
 const imgUrl = (path: string) =>
   path?.startsWith('http') ? path : `${API_BASE}${path}`;
 import { getSimStatusLabel, getSimStatusColor } from '@/lib/utils';
-import { Plus, X, Edit2, Trash2, Calendar, Clock, ImagePlus } from 'lucide-react';
+import { Plus, X, Edit2, Trash2, Calendar, Clock, ImagePlus, Tag } from 'lucide-react';
 
 interface Simulacro {
   id: string;
@@ -297,6 +297,13 @@ export default function SimulacrosPage() {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Simulacro | null>(null);
 
+  // Promo
+  const [promoEnabled, setPromoEnabled] = useState(false);
+  const [promoFlyerFile, setPromoFlyerFile] = useState<File | null>(null);
+  const [promoFlyerPreview, setPromoFlyerPreview] = useState('');
+  const [uploadingPromoFlyer, setUploadingPromoFlyer] = useState(false);
+  const [promoSaved, setPromoSaved] = useState(false);
+
   const fetchSimulacros = useCallback(async () => {
     setLoading(true);
     try {
@@ -309,7 +316,18 @@ export default function SimulacrosPage() {
     }
   }, []);
 
-  useEffect(() => { fetchSimulacros(); }, [fetchSimulacros]);
+  useEffect(() => {
+    fetchSimulacros();
+    // Cargar estado de la promo
+    settingsApi.getAll().then((res) => {
+      const d = res.data;
+      setPromoEnabled(d.promo_enabled === 'true');
+      if (d.promo_flyer_url) {
+        const url = d.promo_flyer_url.startsWith('http') ? d.promo_flyer_url : `${API_BASE}${d.promo_flyer_url}`;
+        setPromoFlyerPreview(url);
+      }
+    }).catch(() => {});
+  }, [fetchSimulacros]);
 
   const handleDelete = async (id: string, title: string) => {
     if (!confirm(`¿Eliminar "${title}"?`)) return;
@@ -415,6 +433,103 @@ export default function SimulacrosPage() {
           ))}
         </div>
       )}
+
+      {/* ── Promo especial ─────────────────────────────────────────── */}
+      <div className="mt-6 bg-white rounded-2xl border border-purple-100 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+            <Tag size={16} className="text-purple-500" />
+            Promo especial
+          </h2>
+          {/* Switch on/off */}
+          <button
+            type="button"
+            onClick={async () => {
+              const next = !promoEnabled;
+              setPromoEnabled(next);
+              await settingsApi.update({ promo_enabled: next ? 'true' : 'false' });
+            }}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+              promoEnabled ? 'bg-purple-500' : 'bg-gray-200'
+            }`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+              promoEnabled ? 'translate-x-6' : 'translate-x-1'
+            }`} />
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mb-4">
+          Cuando esté activa, el bot ofrece esta promo justo después de que el cliente elige horario del 1er simulacro:{' '}
+          <span className="font-medium text-gray-600">inscríbete también al 2do y el 3ro te sale gratis.</span>
+        </p>
+
+        <div className="flex items-start gap-4">
+          {/* Preview del flyer */}
+          <div className="w-28 h-28 rounded-xl border-2 border-dashed border-purple-100 flex items-center justify-center overflow-hidden flex-shrink-0 bg-purple-50">
+            {promoFlyerPreview ? (
+              <img src={promoFlyerPreview} alt="Flyer promo" className="w-full h-full object-cover rounded-xl" />
+            ) : (
+              <ImagePlus size={24} className="text-purple-200" />
+            )}
+          </div>
+
+          <div className="flex-1 space-y-2">
+            <p className="text-xs font-medium text-gray-700">Flyer de la promo (con las 3 fechas)</p>
+            <label className="flex items-center gap-2 px-3 py-2 bg-purple-50 hover:bg-purple-100 border border-purple-100 rounded-xl cursor-pointer text-sm text-purple-700 transition-colors w-fit">
+              <ImagePlus size={14} />
+              {promoFlyerPreview ? 'Cambiar flyer' : 'Subir flyer'}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setPromoFlyerFile(file);
+                  setPromoFlyerPreview(URL.createObjectURL(file));
+                }}
+              />
+            </label>
+
+            {promoFlyerFile && (
+              <button
+                type="button"
+                disabled={uploadingPromoFlyer}
+                onClick={async () => {
+                  if (!promoFlyerFile) return;
+                  setUploadingPromoFlyer(true);
+                  try {
+                    const formData = new FormData();
+                    formData.append('file', promoFlyerFile);
+                    const res = await fetch(`${API_BASE}/settings/upload-promo-flyer`, {
+                      method: 'POST',
+                      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                      body: formData,
+                    });
+                    const data = await res.json();
+                    setPromoFlyerPreview(data.url);
+                    setPromoFlyerFile(null);
+                    setPromoSaved(true);
+                    setTimeout(() => setPromoSaved(false), 3000);
+                  } catch {
+                    alert('Error subiendo el flyer de promo');
+                  } finally {
+                    setUploadingPromoFlyer(false);
+                  }
+                }}
+                className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-colors"
+              >
+                {uploadingPromoFlyer ? 'Subiendo...' : 'Guardar flyer'}
+              </button>
+            )}
+
+            {promoSaved && <p className="text-xs text-green-600">✓ Flyer de promo guardado</p>}
+            {promoFlyerPreview && !promoFlyerFile && !promoSaved && (
+              <p className="text-xs text-gray-400">✓ Flyer configurado</p>
+            )}
+          </div>
+        </div>
+      </div>
 
       {showModal && (
         <SimulacroModal
