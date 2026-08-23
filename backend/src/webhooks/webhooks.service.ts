@@ -74,13 +74,8 @@ export class WebhooksService {
     const mediaUrl = messageData.image?.link || messageData.document?.link || null;
     const messageId = messageData.id || '';
     // Detectar si viene de un anuncio de Meta (Instagram/Facebook → WhatsApp)
-    // En ese caso el webhook incluye un objeto referral con el sourceType 'ad'
-    const hasReferral = !!(messageData.referral?.sourceType || messageData.context?.referral);
-
-    // Log completo cuando viene de anuncio para depurar la estructura del payload
-    if (hasReferral || !rawPhone.match(/^\d+$/)) {
-      this.logger.log(`[REFERRAL] Payload completo: ${JSON.stringify(messageData)}`);
-    }
+    // Según la doc de YCloud el campo es referral.source_type === 'ad'
+    const hasReferral = !!(messageData.referral?.source_type);
 
     // Ignorar re-entregas del mismo mensaje (YCloud puede reenviar el mismo webhook)
     if (messageId && this.processedMessageIds.has(messageId)) {
