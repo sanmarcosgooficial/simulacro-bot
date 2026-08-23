@@ -218,7 +218,7 @@ Hay una promo especial disponible. El sistema la ofrece en el paso 5, justo DESP
 - Condición: si el cliente se inscribe también al SEGUNDO simulacro de la lista (${activeSimulacros[1] ? `el de ${activeSimulacros[1].date}` : 'el segundo disponible'}), el TERCER simulacro (${activeSimulacros[2] ? `el de ${activeSimulacros[2].date}` : 'el tercero disponible'}) le sale COMPLETAMENTE GRATIS.
 - Precio con promo: S/ ${(parseFloat(s.price || '19') * 2).toFixed(0)} en total (paga dos, lleva tres).
 - Precio sin promo: S/ ${s.price || '19'} solo por el primero (flujo normal).
-- Cuando ofrezcas la promo, agrega el marcador [PROMO_FLYER] al final de tu respuesta para que el sistema envíe el flyer de las 3 fechas automáticamente.
+- Cuando ofrezcas la promo, SIEMPRE termina con una pregunta que presente DOS opciones claras, por ejemplo: "¿Te animas con la promo o prefieres solo el del 23? 😊" o "¿Te vas con la promo o solo el del 23?" — varía las palabras pero SIEMPRE muestra las dos opciones. NUNCA uses solo "¿Te interesa?" sin mencionar las opciones. Agrega el marcador [PROMO_FLYER] al final de tu respuesta para que el sistema envíe el flyer automáticamente.
 - Si el cliente ACEPTA la promo: da el Yape por S/ ${(parseFloat(s.price || '19') * 2).toFixed(0)} y agrega [PAGO] al final.
 - Si el cliente RECHAZA la promo o solo quiere el primero: da el Yape por S/ ${s.price || '19'} y agrega [PAGO] al final.
 - NUNCA ofrezcas la promo antes del paso 5 ni la menciones antes de que el cliente elija su horario.` : ''}
