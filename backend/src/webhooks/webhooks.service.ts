@@ -77,6 +77,11 @@ export class WebhooksService {
     // En ese caso el webhook incluye un objeto referral con el sourceType 'ad'
     const hasReferral = !!(messageData.referral?.sourceType || messageData.context?.referral);
 
+    // Log completo cuando viene de anuncio para depurar la estructura del payload
+    if (hasReferral || !rawPhone.match(/^\d+$/)) {
+      this.logger.log(`[REFERRAL] Payload completo: ${JSON.stringify(messageData)}`);
+    }
+
     // Ignorar re-entregas del mismo mensaje (YCloud puede reenviar el mismo webhook)
     if (messageId && this.processedMessageIds.has(messageId)) {
       this.logger.log(`Mensaje duplicado ignorado (${messageId})`);
