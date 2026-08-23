@@ -373,24 +373,29 @@ export class WebhooksService {
           const parsed = this.parseMarkers(aiReply);
           if (parsed.text) await this.sendSplitReply(conversation.id, phone, parsed.text);
 
-          // Detectar si la respuesta menciona la fecha (en español) de un simulacro
-          // activo, aunque la IA olvide el marcador [FLYER:YYYY-MM-DD]: el sistema
-          // envía igual el flyer de ESA fecha. Preferencia: fecha explícita del marcador.
+          // El flyer normal solo se envía si el cliente AÚN NO llegó a CON_EXPERIENCIA.
+          // Una vez que está en CON_EXPERIENCIA o más avanzado, el flyer ya se mandó
+          // y no se vuelve a mandar aunque la IA lo pida o mencione una fecha.
+          const flyerYaEnviado =
+            effectiveStage === ConversationStage.CON_EXPERIENCIA ||
+            effectiveStage === ConversationStage.CONFIRMANDO ||
+            effectiveStage === ConversationStage.CON_HORARIO ||
+            effectiveStage === ConversationStage.ESPERANDO_PAGO ||
+            effectiveStage === ConversationStage.INSCRITO;
+
           const activeSimulacros = await this.simulacros.findActive();
           const flyerDate = parsed.flyerDate || this.detectMentionedDate(aiReply, activeSimulacros);
           // Si la IA emitió [PROMO_FLYER], NO enviamos el flyer normal aunque la IA
           // mencione una fecha en el texto: evita que se mande el flyer del 1er simulacro
           // en vez del flyer de las 3 fechas cuando el bot ofrece la promo.
-          const shouldSendFlyer = !parsed.promoFlyer && (parsed.flyer || !!flyerDate);
+          const shouldSendFlyer = !parsed.promoFlyer && !flyerYaEnviado && (parsed.flyer || !!flyerDate);
 
-          // Forzar envío del flyer si la IA lo olvidó: en las etapas donde
-          // el flyer debería mandarse (presentación del valor + "¿Te atreves?"),
-          // si la IA no emitió el marcador NI mencionó la fecha, lo enviamos igual.
+          // Forzar envío del flyer si la IA lo olvidó: solo en etapas donde aún
+          // corresponde mandarlo (SALUDADA o CON_CARRERA, nunca CON_EXPERIENCIA+).
           const isFlyerStage =
             effectiveStage === ConversationStage.SALUDADA ||
-            effectiveStage === ConversationStage.CON_CARRERA ||
-            effectiveStage === ConversationStage.CON_EXPERIENCIA;
-          const flyerForzado = !shouldSendFlyer && !parsed.promoFlyer && isFlyerStage &&
+            effectiveStage === ConversationStage.CON_CARRERA;
+          const flyerForzado = !shouldSendFlyer && !parsed.promoFlyer && !flyerYaEnviado && isFlyerStage &&
             /prueba|simulacro|atreves|examen|inscri/i.test(aiReply);
 
           if (shouldSendFlyer || flyerForzado) {
