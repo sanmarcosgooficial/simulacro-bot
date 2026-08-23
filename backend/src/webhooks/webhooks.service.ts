@@ -39,8 +39,8 @@ export class WebhooksService {
   ) {
     // Cuánto esperamos SIN mensajes antes de responder. Cada mensaje nuevo
     // reinicia el contador a 0. Configurable con AI_DEBOUNCE_MS (ms).
-    // Default 30s (30000ms) para dar tiempo a que el cliente escriba completo.
-    this.debounceMs = Number(this.config.get('AI_DEBOUNCE_MS', '30000')) || 30000;
+    // Default 10s (10000ms) para dar tiempo a que el cliente escriba completo.
+    this.debounceMs = Number(this.config.get('AI_DEBOUNCE_MS', '10000')) || 10000;
   }
 
 
