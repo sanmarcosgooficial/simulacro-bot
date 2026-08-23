@@ -83,7 +83,9 @@ export class WebhooksService {
 
     const profileName = messageData.customerProfile?.name || null;
     const messageType = messageData.type || 'text';
-    const textContent = messageData.text?.body || '';
+    // El caption de una imagen/video también cuenta como texto (ej. anuncios de Meta
+    // que llegan como imagen con el mensaje del cliente en el caption)
+    const textContent = messageData.text?.body || messageData.image?.caption || messageData.video?.caption || '';
     const mediaUrl = messageData.image?.link || messageData.document?.link || null;
     const messageId = messageData.id || '';
     // Detectar si viene de un anuncio de Meta (Instagram/Facebook → WhatsApp)
@@ -179,10 +181,13 @@ export class WebhooksService {
     const combinedText = allPending.join(' ');
 
     // Recuperar imagen acumulada durante el debounce (si llegó foto + texto juntos)
-    // La imagen tiene prioridad: si en la ventana llegó una imagen, se trata como imagen
+    // La imagen tiene prioridad: si en la ventana llegó una imagen, se trata como imagen.
+    // EXCEPCIÓN: si viene de un anuncio de Meta (hasReferral), la imagen ES el creativo
+    // del anuncio, no un comprobante — se trata como texto para seguir el flujo normal.
     const pendingImg = this.pendingImage.get(phone);
     this.pendingImage.delete(phone);
-    const effectiveMessageType = pendingImg ? 'image' : messageType;
+    const isAdImage = (messageType === 'image' || !!pendingImg) && hasReferral;
+    const effectiveMessageType = isAdImage ? 'text' : (pendingImg ? 'image' : messageType);
     const effectiveMediaUrl = pendingImg ? pendingImg.url : mediaUrl;
 
     // Recuperar el stage capturado antes del debounce y limpiar snapshot
@@ -276,11 +281,12 @@ export class WebhooksService {
       // Solo se trata como comprobante si:
       //   1. El mensaje es una IMAGEN (no texto, no audio, no sticker)
       //   2. El stage es ESPERANDO_PAGO o CONFIRMANDO (el bot ya pidió el Yape)
+      //   3. NO viene de un anuncio de Meta (los anuncios llegan como imagen con caption)
       // Así evitamos que cualquier foto en etapas tempranas se tome como pago.
       const isPaymentStage =
         stage === ConversationStage.ESPERANDO_PAGO ||
         stage === ConversationStage.CONFIRMANDO;
-      if (effectiveMessageType === 'image' && isPaymentStage) {
+      if (effectiveMessageType === 'image' && isPaymentStage && !hasReferral) {
         await this.sendAndSaveReply(conversation.id, phone,
           '¡Gracias! 📸 Recibí tu comprobante. El equipo lo verificará en breve y te confirmamos tu inscripción 🙏');
         await this.conversations.setStage(conversation.id, ConversationStage.INSCRITO);
