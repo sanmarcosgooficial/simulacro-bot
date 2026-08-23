@@ -340,34 +340,35 @@ export class WebhooksService {
         // si es el anuncio saluda y pregunta la carrera; si es una consulta,
         // la responde brevemente y luego lleva la conversación al guion.
         case ConversationStage.NUEVA: {
-          const aiReply = await this.ai.processMessage(combinedText, history as any, phone, {
-            name: contact.name, career: contact.career, funnelStage: 'inicio', greeting: this.getGreeting(), isAdMessage,
-          });
-          if (aiReply && !aiReply.includes('Soy el asesor de Simulacros San Marcos')) {
-            // Procesar marcadores [FLYER]/[PAGO] TAMBIÉN en la etapa NUEVA:
-            // si el cliente pide info del simulacro (fechas/precio/horarios),
-            // la IA responde con los datos + [FLYER] y el sistema envía la foto.
-            const parsed = this.parseMarkers(aiReply);
-            if (parsed.text) await this.sendSplitReply(conversation.id, phone, parsed.text);
-            // Detectar también la fecha mencionada en el texto (aunque la IA olvide el marcador)
-            const activeSimulacros = await this.simulacros.findActive();
-            const flyerDate = parsed.flyerDate || this.detectMentionedDate(aiReply, activeSimulacros);
-            if (!parsed.promoFlyer && (parsed.flyer || flyerDate)) {
-              await new Promise((r) => setTimeout(r, 1000));
-              await this.sendFlyerForDate(phone, flyerDate);
-              // El flyer se envía porque el cliente mostró interés en el simulacro
-              if (!contact.career) {
-                await this.conversations.setStage(conversation.id, ConversationStage.SALUDADA);
-              }
-            }
-          } else {
-            // Respaldo determinista si la IA falla o devuelve plantilla:
-            // solo pregunta la carrera si es el mensaje del anuncio; un saludo
-            // plano se responde con saludo y oferta de ayuda.
+          if (isAdMessage) {
+            // Mensaje del anuncio de Meta: respuesta 100% determinista, sin IA.
+            // Siempre es: saludo según hora + "¿A qué carrera postulas?"
+            // La IA aquí solo introduce variabilidad innecesaria y fallas.
             await this.sendAndSaveReply(conversation.id, phone, `${this.getGreeting()} 😊`);
             await new Promise((r) => setTimeout(r, 1200));
-            await this.sendAndSaveReply(conversation.id, phone,
-              isAdMessage ? '¿A qué carrera postulas? 😊' : '¿En qué te puedo ayudar? 😊');
+            await this.sendAndSaveReply(conversation.id, phone, '¿A qué carrera postulas? 😊');
+          } else {
+            // Consulta genérica (no viene del anuncio): la IA responde con libertad.
+            const aiReply = await this.ai.processMessage(combinedText, history as any, phone, {
+              name: contact.name, career: contact.career, funnelStage: 'inicio', greeting: this.getGreeting(), isAdMessage,
+            });
+            if (aiReply && !aiReply.includes('Soy el asesor de Simulacros San Marcos')) {
+              const parsed = this.parseMarkers(aiReply);
+              if (parsed.text) await this.sendSplitReply(conversation.id, phone, parsed.text);
+              const activeSimulacros = await this.simulacros.findActive();
+              const flyerDate = parsed.flyerDate || this.detectMentionedDate(aiReply, activeSimulacros);
+              if (!parsed.promoFlyer && (parsed.flyer || flyerDate)) {
+                await new Promise((r) => setTimeout(r, 1000));
+                await this.sendFlyerForDate(phone, flyerDate);
+                if (!contact.career) {
+                  await this.conversations.setStage(conversation.id, ConversationStage.SALUDADA);
+                }
+              }
+            } else {
+              await this.sendAndSaveReply(conversation.id, phone, `${this.getGreeting()} 😊`);
+              await new Promise((r) => setTimeout(r, 1200));
+              await this.sendAndSaveReply(conversation.id, phone, '¿En qué te puedo ayudar? 😊');
+            }
           }
           await this.conversations.setStage(conversation.id, ConversationStage.SALUDADA);
           await this.contacts.update(contact.id, { status: ContactStatus.INTERESADO });
