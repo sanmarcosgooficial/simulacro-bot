@@ -24,6 +24,8 @@ export class WebhooksService {
   private readonly lastMessageId = new Map<string, string>();
   // Acumular todos los mensajes del periodo de debounce por teléfono
   private readonly pendingMessages = new Map<string, string[]>();
+  // Acumular si llegó una imagen durante el debounce (para no perderla si llega con texto)
+  private readonly pendingImage = new Map<string, { url: string }>();
   // IDs de mensajes ya procesados (YCloud a veces reenvía el mismo webhook)
   private readonly processedMessageIds = new Set<string>();
 
@@ -119,6 +121,12 @@ export class WebhooksService {
       this.pendingMessages.set(phone, pending);
     }
 
+    // Si llegó una imagen, acumularla para que el debounce no la pierda
+    // aunque después llegue un mensaje de texto en la misma ventana
+    if (messageType === 'image' && mediaUrl) {
+      this.pendingImage.set(phone, { url: mediaUrl });
+    }
+
     // Tiempo de lectura: apenas llega el primer mensaje del cliente (y no hay
     // debounce activo), mostramos el indicador "escribiendo..." para que el
     // cliente sepa que el bot está leyendo mientras espera sus mensajes por
@@ -170,6 +178,13 @@ export class WebhooksService {
     this.pendingMessages.delete(phone);
     const combinedText = allPending.join(' ');
 
+    // Recuperar imagen acumulada durante el debounce (si llegó foto + texto juntos)
+    // La imagen tiene prioridad: si en la ventana llegó una imagen, se trata como imagen
+    const pendingImg = this.pendingImage.get(phone);
+    this.pendingImage.delete(phone);
+    const effectiveMessageType = pendingImg ? 'image' : messageType;
+    const effectiveMediaUrl = pendingImg ? pendingImg.url : mediaUrl;
+
     // Recuperar el stage capturado antes del debounce y limpiar snapshot
     const snapshotStage = (this as any)._stageSnapshot?.[phone];
     if ((this as any)._stageSnapshot) delete (this as any)._stageSnapshot[phone];
@@ -199,15 +214,15 @@ export class WebhooksService {
       //    en el debounce, guardamos el texto COMBINADO para que la IA tenga el
       //    contexto completo en los siguientes turnos ("ya postulo antes me envia
       //    la informacion enviado porfavor" y no solo la última parte).
-      const userTextToSave = allPending.length > 1 ? combinedText : (textContent || `[${messageType}]`);
+      const userTextToSave = allPending.length > 1 ? combinedText : (textContent || `[${effectiveMessageType}]`);
       const userMsg = await this.conversations.addMessage(
         conversation.id,
         MessageRole.USER,
         userTextToSave,
         {
-          type: messageType === 'image' ? MessageType.IMAGE : 
-                messageType === 'document' ? MessageType.DOCUMENT : MessageType.TEXT,
-          mediaUrl,
+          type: effectiveMessageType === 'image' ? MessageType.IMAGE : 
+                effectiveMessageType === 'document' ? MessageType.DOCUMENT : MessageType.TEXT,
+          mediaUrl: effectiveMediaUrl,
           externalId: messageData.id,
         },
       );
@@ -265,7 +280,7 @@ export class WebhooksService {
       const isPaymentStage =
         stage === ConversationStage.ESPERANDO_PAGO ||
         stage === ConversationStage.CONFIRMANDO;
-      if (messageType === 'image' && isPaymentStage) {
+      if (effectiveMessageType === 'image' && isPaymentStage) {
         await this.sendAndSaveReply(conversation.id, phone,
           '¡Gracias! 📸 Recibí tu comprobante. El equipo lo verificará en breve y te confirmamos tu inscripción 🙏');
         await this.conversations.setStage(conversation.id, ConversationStage.INSCRITO);
