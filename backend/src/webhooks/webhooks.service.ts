@@ -237,14 +237,13 @@ export class WebhooksService {
       this.logger.log(`[STAGE] ${phone} → ${stage} | msg: "${combinedText.substring(0,50)}"`);
 
       // ── COMPROBANTE DE PAGO ───────────────────────────────────────────────
-      // Cualquier imagen después de iniciar el funnel se trata como comprobante
-      // (aunque la IA no haya emitido [PAGO], no se pierde ninguna inscripción).
+      // Solo se trata como comprobante si:
+      //   1. El mensaje es una IMAGEN (no texto, no audio, no sticker)
+      //   2. El stage es ESPERANDO_PAGO o CONFIRMANDO (el bot ya pidió el Yape)
+      // Así evitamos que cualquier foto en etapas tempranas se tome como pago.
       const isPaymentStage =
         stage === ConversationStage.ESPERANDO_PAGO ||
-        stage === ConversationStage.CONFIRMANDO ||
-        stage === ConversationStage.CON_CARRERA ||
-        stage === ConversationStage.CON_EXPERIENCIA ||
-        stage === ConversationStage.CON_HORARIO;
+        stage === ConversationStage.CONFIRMANDO;
       if (messageType === 'image' && isPaymentStage) {
         await this.sendAndSaveReply(conversation.id, phone,
           '¡Gracias! 📸 Recibí tu comprobante. El equipo lo verificará en breve y te confirmamos tu inscripción 🙏');
