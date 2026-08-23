@@ -361,14 +361,19 @@ export class WebhooksService {
           // en vez del flyer de las 3 fechas cuando el bot ofrece la promo.
           const shouldSendFlyer = !parsed.promoFlyer && (parsed.flyer || !!flyerDate);
 
-          if (shouldSendFlyer) {
+          // Forzar envío del flyer si la IA lo olvidó: en las etapas donde
+          // el flyer debería mandarse (presentación del valor + "¿Te atreves?"),
+          // si la IA no emitió el marcador NI mencionó la fecha, lo enviamos igual.
+          const isFlyerStage =
+            effectiveStage === ConversationStage.SALUDADA ||
+            effectiveStage === ConversationStage.CON_CARRERA ||
+            effectiveStage === ConversationStage.CON_EXPERIENCIA;
+          const flyerForzado = !shouldSendFlyer && !parsed.promoFlyer && isFlyerStage &&
+            /prueba|simulacro|atreves|examen|inscri/i.test(aiReply);
+
+          if (shouldSendFlyer || flyerForzado) {
             await new Promise((r) => setTimeout(r, 1000));
-            // Enviar el flyer de la fecha detectada (marcador o mención en el texto),
-            // o del primer disponible con flyer si no hay fecha.
             await this.sendFlyerForDate(phone, flyerDate);
-            // Bookkeeping para el panel: solo avanza si el flyer se envió en la etapa de
-            // presentación del valor (antes de preguntar el horario). Nunca retrocede
-            // etapas avanzadas (esperando pago, inscrito, etc.).
             if (effectiveStage === ConversationStage.SALUDADA || effectiveStage === ConversationStage.CON_CARRERA) {
               await this.conversations.setStage(conversation.id, ConversationStage.CON_EXPERIENCIA);
             }
