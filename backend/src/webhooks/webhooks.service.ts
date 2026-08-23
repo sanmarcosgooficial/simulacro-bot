@@ -105,6 +105,13 @@ export class WebhooksService {
     // Guardar el último messageId para usarlo en el typing indicator
     this.lastMessageId.set(phone, messageId);
 
+    // Ignorar tipos de mensaje que no aportan al flujo de ventas (stickers, audios, videos, reacciones)
+    const ignoredTypes = ['sticker', 'audio', 'voice', 'video', 'reaction', 'location', 'contacts'];
+    if (ignoredTypes.includes(messageType)) {
+      this.logger.log(`[IGNORADO] Mensaje de tipo "${messageType}" de ${phone} — sin respuesta`);
+      return;
+    }
+
     // Acumular mensajes de texto durante el periodo de debounce
     if (textContent) {
       const pending = this.pendingMessages.get(phone) || [];
