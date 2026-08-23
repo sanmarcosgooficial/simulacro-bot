@@ -58,12 +58,23 @@ export class WebhooksService {
     if (!messageData) return;
 
     // El número viene sin '+' en YCloud: ej "51978069398"
+    // Si el usuario tiene username de WhatsApp (feature de Meta desde 2026),
+    // el campo 'from' puede traer un BSUID (ej. "US.13491208655302741918")
+    // en vez del número de teléfono. En ese caso usamos el BSUID como
+    // identificador único para la conversación y para responderle.
     const rawPhone = messageData.from || '';
-    const phone = rawPhone.startsWith('+') ? rawPhone : `+${rawPhone}`;
+    const isBsuid = /^[A-Z]{2}\.[A-Z0-9.]+$/i.test(rawPhone);
+    const phone = isBsuid
+      ? rawPhone  // usar BSUID tal cual como identificador
+      : rawPhone.startsWith('+') ? rawPhone : `+${rawPhone}`;
 
-    if (!phone || phone === '+') {
-      this.logger.warn('Mensaje sin número de teléfono');
+    if (!phone) {
+      this.logger.warn('Mensaje sin número de teléfono ni BSUID');
       return;
+    }
+
+    if (isBsuid) {
+      this.logger.log(`[BSUID] Cliente con username de WhatsApp, identificador: ${phone}`);
     }
 
 
