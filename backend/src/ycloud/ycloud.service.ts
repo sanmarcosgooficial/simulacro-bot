@@ -17,6 +17,19 @@ export class YCloudService {
     this.webhookSecret = this.config.get('YCLOUD_WEBHOOK_SECRET', '');
   }
 
+  // Detectar si un identificador es BSUID (ej. "US.13491208655302741918")
+  private isBsuid(id: string): boolean {
+    return /^[A-Z]{2}\.[A-Z0-9.]+$/i.test(id) && !id.startsWith('+');
+  }
+
+  // Construir el campo to/recipient según el tipo de identificador
+  private buildRecipientFields(to: string): { to?: string; recipient?: string } {
+    if (this.isBsuid(to)) {
+      return { recipient: to }; // BSUID → campo recipient, sin 'to'
+    }
+    return { to }; // número normal → campo to
+  }
+
   // Enviar mensaje de texto simple (con reply opcional)
   async sendTextMessage(to: string, text: string, replyToExternalId?: string): Promise<string | null> {
     if (!this.apiKey || this.apiKey === 'xxxxxxxxxx') {
@@ -27,7 +40,7 @@ export class YCloudService {
     try {
       const body: any = {
         from: this.phoneNumber,
-        to,
+        ...this.buildRecipientFields(to),
         type: 'text',
         text: { body: text },
       };
@@ -86,7 +99,7 @@ export class YCloudService {
         `${this.baseUrl}/whatsapp/messages`,
         {
           from: this.phoneNumber,
-          to,
+          ...this.buildRecipientFields(to),
           type: 'image',
           image: { link: imageUrl, caption },
         },
@@ -115,7 +128,7 @@ export class YCloudService {
         `${this.baseUrl}/whatsapp/messages`,
         {
           from: this.phoneNumber,
-          to,
+          ...this.buildRecipientFields(to),
           type: 'text',
           text: { body: text },
           context: { messageId: quotedMessageId },
