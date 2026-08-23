@@ -73,6 +73,9 @@ export class WebhooksService {
     const textContent = messageData.text?.body || '';
     const mediaUrl = messageData.image?.link || messageData.document?.link || null;
     const messageId = messageData.id || '';
+    // Detectar si viene de un anuncio de Meta (Instagram/Facebook → WhatsApp)
+    // En ese caso el webhook incluye un objeto referral con el sourceType 'ad'
+    const hasReferral = !!(messageData.referral?.sourceType || messageData.context?.referral);
 
     // Ignorar re-entregas del mismo mensaje (YCloud puede reenviar el mismo webhook)
     if (messageId && this.processedMessageIds.has(messageId)) {
@@ -266,13 +269,14 @@ export class WebhooksService {
         .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu, '')
         .toLowerCase();
       const isAdMessage =
+        hasReferral || // viene directo de un anuncio de Meta (Instagram/Facebook)
         (tLower.includes('quiero probarme') && /simulacro|san marcos/.test(tLower)) ||
         (tLower.includes('quiero ponerme a prueba') && /simulacro|san marcos/.test(tLower)) ||
         tLower.includes('quiero mas informacion') ||
         tLower.includes('quiero más información');
 
       // FILTRO: si el contacto no tiene conversación activa (stage NUEVA) y el
-      // mensaje NO es uno de los dos mensajes del anuncio, se ignora por completo.
+      // mensaje NO es uno de los mensajes del anuncio, se ignora por completo.
       // Solo se inicia el flujo cuando el cliente llega desde el anuncio de Meta.
       if (stage === ConversationStage.NUEVA && !isAdMessage) {
         this.logger.log(`[FILTRO] Mensaje ignorado de ${phone} (no es mensaje del anuncio): "${combinedText.substring(0, 60)}"`);
