@@ -290,6 +290,7 @@ export class WebhooksService {
         await this.sendAndSaveReply(conversation.id, phone,
           '¡Gracias! 📸 Recibí tu comprobante. El equipo lo verificará en breve y te confirmamos tu inscripción 🙏');
         await this.conversations.setStage(conversation.id, ConversationStage.INSCRITO);
+        await this.conversations.toggleAgent(conversation.id, true); // Desactiva el bot al recibir comprobante
         await this.contacts.update(contact.id, { status: ContactStatus.INSCRITO });
         this.sse.emitContactUpdated(contact);
         this.sse.emitDashboardUpdate({ refreshNeeded: true });
