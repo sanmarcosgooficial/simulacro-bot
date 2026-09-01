@@ -341,13 +341,7 @@ export class WebhooksService {
         tLower.includes('quiero mas informacion') ||
         tLower.includes('quiero más información');
 
-      // FILTRO: si el contacto no tiene conversación activa (stage NUEVA) y el
-      // mensaje NO es uno de los mensajes del anuncio, se ignora por completo.
-      // Solo se inicia el flujo cuando el cliente llega desde el anuncio de Meta.
-      if (stage === ConversationStage.NUEVA && !isAdMessage) {
-        this.logger.log(`[FILTRO] Mensaje ignorado de ${phone} (no es mensaje del anuncio): "${combinedText.substring(0, 60)}"`);
-        return;
-      }
+      // Sin filtro: el bot responde a cualquier mensaje, venga del anuncio o directo al número.
 
       // Si llega el mensaje del anuncio con la conversación estancada en el inicio
       // (etapa SALUDADA/CON_CARRERA sin avanzar), reiniciamos el flujo para empezar
