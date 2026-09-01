@@ -308,8 +308,10 @@ export class WebhooksService {
         return;
       }
 
-      // TEXTO en etapa de pago → animar a enviar foto, nunca confirmar inscripción
-      if (effectiveMessageType !== 'image' && isPaymentStage) {
+      // TEXTO en etapa de pago sin pregunta → animar a enviar foto, nunca confirmar inscripción
+      // Si el cliente hace una pregunta (?), dejar que la IA la responda normalmente
+      const hasQuestion = /\?|¿/.test(combinedText);
+      if (effectiveMessageType !== 'image' && isPaymentStage && !hasQuestion) {
         const replies = [
           'Quedo atento 👀 Mándame la captura del Yape cuando lo hagas 📸',
           'Dale, en cuanto yapees me mandas la foto del comprobante 😊',
