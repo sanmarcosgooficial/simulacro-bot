@@ -345,7 +345,7 @@ export class WebhooksService {
             // Mensaje del anuncio de Meta: respuesta 100% determinista, sin IA.
             // Siempre es: saludo según hora + "¿A qué carrera postulas?"
             // La IA aquí solo introduce variabilidad innecesaria y fallas.
-            await this.sendAndSaveReply(conversation.id, phone, `${this.getGreeting()} 😊`);
+            await this.sendAndSaveReply(conversation.id, phone, this.getGreeting());
             await new Promise((r) => setTimeout(r, 1200));
             await this.sendAndSaveReply(conversation.id, phone, '¿A qué carrera postulas? 😊');
           } else {
@@ -355,7 +355,7 @@ export class WebhooksService {
             });
             if (aiReply && !aiReply.includes('Soy el asesor de Simulacros San Marcos')) {
               const parsed = this.parseMarkers(aiReply);
-              if (parsed.text) await this.sendSplitReply(conversation.id, phone, parsed.text);
+              if (parsed.textBefore) await this.sendSplitReply(conversation.id, phone, parsed.textBefore);
               const activeSimulacros = await this.simulacros.findActive();
               const flyerDate = parsed.flyerDate || this.detectMentionedDate(aiReply, activeSimulacros);
               if (!parsed.promoFlyer && (parsed.flyer || flyerDate)) {
@@ -364,6 +364,10 @@ export class WebhooksService {
                 if (!contact.career) {
                   await this.conversations.setStage(conversation.id, ConversationStage.SALUDADA);
                 }
+              }
+              if (parsed.textAfter) {
+                await new Promise((r) => setTimeout(r, 1000));
+                await this.sendSplitReply(conversation.id, phone, parsed.textAfter);
               }
             } else {
               await this.sendAndSaveReply(conversation.id, phone, `${this.getGreeting()} 😊`);
@@ -394,7 +398,7 @@ export class WebhooksService {
 
           // Marcadores de acción: [FLYER] envía la imagen, [PAGO] activa la espera del comprobante
           const parsed = this.parseMarkers(aiReply);
-          if (parsed.text) await this.sendSplitReply(conversation.id, phone, parsed.text);
+          if (parsed.textBefore) await this.sendSplitReply(conversation.id, phone, parsed.textBefore);
 
           // El flyer normal solo se envía si el cliente AÚN NO llegó a CON_EXPERIENCIA.
           // Una vez que está en CON_EXPERIENCIA o más avanzado, el flyer ya se mandó
@@ -434,6 +438,12 @@ export class WebhooksService {
           if (parsed.promoFlyer) {
             await new Promise((r) => setTimeout(r, 1000));
             await this.sendPromoFlyer(phone);
+          }
+
+          // Texto que va DESPUÉS del flyer (ej. "¿Te atreves a ponerte a prueba?")
+          if (parsed.textAfter) {
+            await new Promise((r) => setTimeout(r, 1000));
+            await this.sendSplitReply(conversation.id, phone, parsed.textAfter);
           }
 
           if (parsed.pago) {
@@ -513,17 +523,32 @@ export class WebhooksService {
   // [FLYER] envía el flyer del primer disponible; [FLYER:YYYY-MM-DD] envía
   // el flyer del simulacro con ESA fecha exacta (el que la IA está ofreciendo).
   // [PROMO_FLYER] envía el flyer de la promo (con las 3 fechas).
-  private parseMarkers(text: string): { text: string; flyer: boolean; pago: boolean; flyerDate?: string; promoFlyer: boolean } {
+  // textBefore: texto que va ANTES del flyer; textAfter: texto que va DESPUÉS del flyer.
+  private parseMarkers(text: string): { text: string; textBefore: string; textAfter: string; flyer: boolean; pago: boolean; flyerDate?: string; promoFlyer: boolean } {
     const flyer = /\[FLYER(:\d{4}-\d{2}-\d{2})?\]/i.test(text);
     const pago = /\[PAGO\]/i.test(text);
     const promoFlyer = /\[PROMO_FLYER\]/i.test(text);
     const flyerDateMatch = text.match(/\[FLYER:(\d{4}-\d{2}-\d{2})\]/i);
+
+    // Dividir en antes y después del marcador [FLYER] o [PROMO_FLYER]
+    const flyerMarkerRegex = /\[FLYER(:\d{4}-\d{2}-\d{2})?\]|\[PROMO_FLYER\]/i;
+    const markerIdx = text.search(flyerMarkerRegex);
+    let textBefore = '';
+    let textAfter = '';
+    if (markerIdx >= 0) {
+      textBefore = text.substring(0, markerIdx).replace(/\[PAGO\]/gi, '').trim();
+      const afterMarker = text.substring(markerIdx).replace(flyerMarkerRegex, '').replace(/\[PAGO\]/gi, '').trim();
+      textAfter = afterMarker;
+    } else {
+      textBefore = text.replace(/\[PAGO\]/gi, '').trim();
+    }
+
     const clean = text
       .replace(/\[FLYER(:\d{4}-\d{2}-\d{2})?\]/gi, '')
       .replace(/\[PAGO\]/gi, '')
       .replace(/\[PROMO_FLYER\]/gi, '')
       .trim();
-    return { text: clean, flyer, pago, flyerDate: flyerDateMatch?.[1], promoFlyer };
+    return { text: clean, textBefore, textAfter, flyer, pago, flyerDate: flyerDateMatch?.[1], promoFlyer };
   }
 
   private async sendAndSaveReply(
