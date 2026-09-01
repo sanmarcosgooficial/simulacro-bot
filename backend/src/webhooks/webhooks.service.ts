@@ -430,11 +430,6 @@ export class WebhooksService {
             await this.sendFlyerForDate(phone, flyerDate);
             if (effectiveStage === ConversationStage.SALUDADA || effectiveStage === ConversationStage.CON_CARRERA) {
               await this.conversations.setStage(conversation.id, ConversationStage.CON_EXPERIENCIA);
-              // Siempre enviamos la pregunta después del flyer, sin depender de la IA
-              if (!parsed.textAfter) {
-                await new Promise((r) => setTimeout(r, 1200));
-                await this.sendAndSaveReply(conversation.id, phone, '¿Te atreves a ponerte a prueba? 💪');
-              }
             }
           }
 
