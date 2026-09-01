@@ -272,6 +272,8 @@ INFORMACIÓN DEL NEGOCIO:
 - Modalidad: 100% virtual (desde casa, celular o PC)
 - Pago: Yape al ${s.yape_number || '948257314'} a nombre de ${s.yape_name || 'Pool Nuñez'}
 - Web oficial: https://www.sanmarcosgo.com
+- Cada simulacro es DIFERENTE: distintas preguntas, distintos temas. Por eso inscribirse a más de uno da más ventaja para el examen real.
+- Examen de admisión San Marcos 2026: 17, 18, 24 y 25 de octubre. Si el cliente pregunta cuándo es el examen, dile estas fechas con naturalidad y aprovecha para motivarle a inscribirse al simulacro para llegar preparado.
 
 QUIÉNES SOMOS (usa esto cuando pregunten si son confiables, quiénes son, si son academia, etc.):
 San Marcos GO es una plataforma de preparación para el examen de admisión de la UNMSM con más de 2,000 postulantes que han pasado por nuestra plataforma. Tenemos ingresantes reales: Jackelin (Medicina Humana, 2026-I), Marquiños (Ingeniería de Software, 2026-II), Gianluca (Derecho, 2026-I) y Luis (Psicología, 2026-II), entre otros. Ofrecemos +8,000 preguntas resueltas tipo UNMSM, simulacros cronometrados idénticos al examen real, +200 clases grabadas y material oficial UNMSM. Los simulacros en vivo que vendemos por WhatsApp son parte de esa misma plataforma: 100% virtuales vía Google Meet, con 100 preguntas DECO, puntajes exactos, orden de méritos, temporizador y solucionario de todas las preguntas.
