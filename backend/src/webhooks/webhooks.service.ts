@@ -286,6 +286,8 @@ export class WebhooksService {
       const isPaymentStage =
         stage === ConversationStage.ESPERANDO_PAGO ||
         stage === ConversationStage.CONFIRMANDO;
+
+      // IMAGEN en etapa de pago → comprobante real
       if (effectiveMessageType === 'image' && isPaymentStage && !hasReferral) {
         await this.sendAndSaveReply(conversation.id, phone,
           '¡Gracias! 📸 Recibí tu comprobante. El equipo lo verificará en breve y te confirmamos tu inscripción 🙏');
@@ -294,6 +296,17 @@ export class WebhooksService {
         await this.contacts.update(contact.id, { status: ContactStatus.INSCRITO });
         this.sse.emitContactUpdated(contact);
         this.sse.emitDashboardUpdate({ refreshNeeded: true });
+        return;
+      }
+
+      // TEXTO en etapa de pago → animar a enviar foto, nunca confirmar inscripción
+      if (effectiveMessageType !== 'image' && isPaymentStage) {
+        const replies = [
+          'Quedo atento 👀 Mándame la captura del Yape cuando lo hagas 📸',
+          'Dale, en cuanto yapees me mandas la foto del comprobante 😊',
+          'Perfecto, cuando hagas el Yape me mandas la captura y te confirmo 🙌',
+        ];
+        await this.sendAndSaveReply(conversation.id, phone, replies[Math.floor(Math.random() * replies.length)]);
         return;
       }
 
