@@ -28,6 +28,8 @@ export class WebhooksService {
   private readonly pendingImage = new Map<string, { url: string }>();
   // IDs de mensajes ya procesados (YCloud a veces reenvía el mismo webhook)
   private readonly processedMessageIds = new Set<string>();
+  // Lock por teléfono: evita que dos mensajes se procesen en paralelo para el mismo número
+  private readonly processingLock = new Set<string>();
 
   constructor(
     private readonly conversations: ConversationsService,
@@ -174,6 +176,13 @@ export class WebhooksService {
 
     // Si mientras esperaba llegó otro mensaje, ese otro ya tomó el control → salir
     if ((this as any)._lastToken[phone] !== myToken) return;
+
+    // Si ya hay un procesamiento activo para este número, esperar hasta que termine
+    if (this.processingLock.has(phone)) {
+      this.logger.log(`[LOCK] ${phone} ya está procesando, mensaje descartado para evitar duplicado`);
+      return;
+    }
+    this.processingLock.add(phone);
 
     // Tomar todos los mensajes acumulados y limpiar el acumulador
     const allPending = this.pendingMessages.get(phone) || [textContent];
@@ -484,6 +493,8 @@ export class WebhooksService {
 
     } catch (error) {
       this.logger.error(`Error procesando mensaje de ${phone}:`, error.message);
+    } finally {
+      this.processingLock.delete(phone);
     }
   }
 
