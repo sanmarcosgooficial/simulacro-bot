@@ -60,6 +60,7 @@ export class AiService implements OnModuleInit {
     const activeSimulacros = await this.simulacrosService.findActive();
 
     let simulacrosText = '';
+    let simulacroDestacado = ''; // instrucción explícita de qué simulacro promocionar
     if (activeSimulacros.length === 0) {
       simulacrosText = 'No hay simulacros programados por ahora.';
     } else {
@@ -68,32 +69,91 @@ export class AiService implements OnModuleInit {
       const todayStr = now.toISOString().split('T')[0];
       const tomorrowStr = (() => { const d = new Date(now); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })();
       const currentHour = now.getUTCHours() + now.getUTCMinutes() / 60;
+      // 0=domingo,1=lunes...6=sábado  (en hora Perú)
+      const dayOfWeek = new Date(now.toISOString().split('T')[0] + 'T12:00:00Z').getUTCDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // sábado o domingo
       const fmt12 = (h: number) => h > 12 ? h - 12 : h;
-      // Formatear una fecha ISO (YYYY-MM-DD) en español: "10 de agosto"
+      const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+      const diasSemana = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+      // Retorna "miércoles 3"
       const fmtDate = (iso: string) => {
         const [y, m, d] = iso.split('-');
-        const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-        return `${parseInt(d, 10)} de ${meses[parseInt(m, 10) - 1] || ''}`;
+        const diaNombre = diasSemana[new Date(`${iso}T12:00:00Z`).getUTCDay()];
+        return `${diaNombre} ${parseInt(d, 10)}`;
       };
+
+      // Filtrar horarios disponibles de un simulacro (descartando los que ya pasaron si es hoy)
+      const getAvailableSchedules = (sim: any, isToday: boolean) =>
+        (sim.schedules || []).filter((h: string) => {
+          if (!isToday) return true;
+          const startH = parseInt(h.split(' - ')[0]?.split(':')[0] || '0');
+          return startH > currentHour + (5 / 60);
+        });
+
+      // ── Lógica del simulacro a DESTACAR ──────────────────────────────────────
+      // Lunes a viernes: siempre promocionar el de MAÑANA (o el siguiente disponible
+      // si mañana ya no tiene horarios o no existe).
+      // Sábado y domingo: promocionar el de HOY si aún tiene horarios; si no, el de mañana.
+      let simADestacado: any = null;
+      let labelDestacado = '';
+
+      if (isWeekend) {
+        // Sábado/domingo: busca primero el simulacro de HOY con horarios disponibles
+        const simHoy = activeSimulacros.find((s) => s.date === todayStr);
+        if (simHoy && getAvailableSchedules(simHoy, true).length > 0) {
+          simADestacado = simHoy;
+          labelDestacado = `hoy, ${fmtDate(todayStr)}`;
+        }
+      }
+
+      if (!simADestacado) {
+        // Lunes-viernes siempre, o sábado/domingo cuando hoy ya no hay horarios:
+        // busca el simulacro de MAÑANA
+        const simMañana = activeSimulacros.find((s) => s.date === tomorrowStr);
+        if (simMañana) {
+          simADestacado = simMañana;
+          labelDestacado = `mañana, ${fmtDate(tomorrowStr)}`;
+        }
+      }
+
+      if (!simADestacado) {
+        // Ni hoy ni mañana: usa el próximo disponible
+        simADestacado = activeSimulacros.find((s) => s.date > todayStr) || null;
+        if (simADestacado) {
+          labelDestacado = `el ${fmtDate(simADestacado.date)}`;
+        }
+      }
+
+      if (simADestacado) {
+        const isToday = simADestacado.date === todayStr;
+        const avail = getAvailableSchedules(simADestacado, isToday);
+        const horariosDestacado = avail.length
+          ? avail.map((h: string) => {
+              const start = parseInt(h.split(' - ')[0]?.split(':')[0]);
+              const end = parseInt(h.split(' - ')[1]?.split(':')[0]);
+              return `de ${fmt12(start)} a ${fmt12(end)}`;
+            }).join(' o ')
+          : (simADestacado.schedules || []).map((h: string) => {
+              const start = parseInt(h.split(' - ')[0]?.split(':')[0]);
+              const end = parseInt(h.split(' - ')[1]?.split(':')[0]);
+              return `de ${fmt12(start)} a ${fmt12(end)}`;
+            }).join(' o ');
+        simulacroDestacado = `SIMULACRO A PROMOCIONAR AHORA: "${labelDestacado}" [fecha: ${simADestacado.date}], horarios disponibles: ${horariosDestacado}. Cuando presentes el simulacro en el paso 3, di SIEMPRE "${labelDestacado.startsWith('hoy') ? '¡Hoy tenemos simulacro!' : labelDestacado.startsWith('mañana') ? '¡Mañana tenemos simulacro!' : `¡El ${fmtDate(simADestacado.date)} tenemos simulacro!`}" al inicio de tu mensaje de presentación. Este es el simulacro que debes ofrecer primero.`;
+      }
+      // ─────────────────────────────────────────────────────────────────────────
 
       simulacrosText = activeSimulacros
         .filter((sim) => sim.date >= todayStr) // nunca ofrecer simulacros de fechas pasadas
         .map((sim) => {
           const isToday = sim.date === todayStr;
           const isTomorrow = sim.date === tomorrowStr;
-          // Etiqueta SIEMPRE con la fecha real resuelta para que la IA nunca
-          // calcule fechas: "hoy, 9 de agosto" / "mañana, 10 de agosto" / "el 15 de agosto"
           const dayLabel = isToday
             ? `hoy, ${fmtDate(todayStr)}`
             : isTomorrow
               ? `mañana, ${fmtDate(tomorrowStr)}`
               : `el ${fmtDate(sim.date)}`;
 
-          const availableSchedules = (sim.schedules || []).filter((h: string) => {
-            if (!isToday) return true;
-            const startH = parseInt(h.split(' - ')[0]?.split(':')[0] || '0');
-            return startH > currentHour + (5 / 60);
-          });
+          const availableSchedules = getAvailableSchedules(sim, isToday);
 
           if (availableSchedules.length === 0 && isToday) return null;
 
@@ -140,7 +200,7 @@ export class AiService implements OnModuleInit {
       const isAd = contactContext?.isAdMessage === true;
       if (isAd) {
         // Viene del anuncio de Meta: saluda y pregunta la carrera (flujo del anuncio)
-        funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez desde el ANUNCIO de Meta. Responde con el saludo "${greet}" (según la hora de Perú) en el primer mensaje y en el segundo (separado con ||) pregúntale qué carrera postula. Formato recomendado: "${greet} 😊||¿A qué carrera postulas?" (puedes variar las palabras, pero incluye SIEMPRE el saludo y la pregunta de carrera). Si el cliente preguntó algo específico además del saludo, respóndelo brevemente en el primer mensaje antes del ||.`;
+        funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez desde el ANUNCIO de Meta. Responde con el saludo "${greet}" (según la hora de Perú) en el primer mensaje y en el segundo (separado con ||) pregúntale qué carrera postula. Formato recomendado: "${greet}||¿A qué carrera postulas?" (puedes variar las palabras, pero incluye SIEMPRE el saludo y la pregunta de carrera). IMPORTANTE: el saludo de bienvenida NO debe llevar emoji. Si el cliente preguntó algo específico además del saludo, respóndelo brevemente en el primer mensaje antes del ||.`;
       } else {
         // Consulta normal o solo saludo de un cliente nuevo: NO preguntes la carrera todavía
         funnelInstruction = `ETAPA ACTUAL: El cliente acaba de escribir por primera vez, pero NO viene del anuncio (es una consulta normal o solo un saludo).
@@ -159,8 +219,8 @@ export class AiService implements OnModuleInit {
       REGLA DEL SALUDO: si el cliente SOLO saluda ("buenas tardes", "hola", "buenos días", "buenas noches") o dice algo sin pregunta específica, respóndele SOLO con un saludo corto y natural de vuelta (según la hora de Perú) y pregúntale "¿En qué te puedo ayudar? 😊" o "¿Tienes alguna consulta?". NO preguntes la carrera todavía y NO des información (precio, horarios, modalidad) que no pidió: un saludo se responde con un saludo y una oferta de ayuda.
       REGLA DEL INTERÉS: cuando el cliente empiece a preguntar por el servicio (precio, horarios, modalidad, carreras, inscripción), respóndele con entusiasmo tipo "¡Claro! 😊" o "¡Con gusto!" y retoma el guion preguntando a qué carrera postula (si aún no la sabes) o el siguiente paso. Si YA sabes su carrera, continúa directo con el siguiente paso.- Si aún no sabes la carrera del cliente: pregúntala con naturalidad.
       - Cuando la diga: SIEMPRE repite el nombre de la carrera tal como la dijo el cliente (o su forma correcta) al empezar tu respuesta, y elógiala con UNA línea corta y genuina. Ej: cliente dice "enfermeria" → "¡Uff, enfermería! Una carrera muy noble...". NUNCA respondas sobre la carrera sin decir su nombre.
-- Luego preséntale el valor del simulacro (paso 3) y agrega la línea [FLYER] al final de tu respuesta para que el sistema envíe la imagen del flyer.
-- Después pregúntale si se atreve a ponerse a prueba (paso 3) y, si acepta, qué horario le acomoda (paso 4, usa los SIMULACROS DISPONIBLES).
+- Preséntale el valor del simulacro (paso 3) y agrega la línea [FLYER] al final de tu respuesta. DESPUÉS de que el sistema envíe el flyer (es decir, en el MISMO mensaje que termina con [FLYER]), incluye la pregunta "¿Te atreves a ponerte a prueba?" AL FINAL, después del marcador [FLYER]. El orden OBLIGATORIO es: pitch de valor → [FLYER] → "¿Te atreves a ponerte a prueba?". NUNCA hagas la pregunta en un mensaje separado sin [FLYER] antes.
+- Si acepta, pregúntale qué horario le acomoda (paso 4, usa los SIMULACROS DISPONIBLES).
       - SELECCIÓN DE SIMULACRO: ofrece SIEMPRE el siguiente disponible que aparezca en SIMULACROS DISPONIBLES (el primero de la lista). Si el simulacro de hoy ya se usó, ya pasó la hora o no tiene horarios libres, ofrece el siguiente (el de mañana o el próximo día programado según la lista). NUNCA ofrezcas un simulacro de fecha pasada ni inventes fechas que no estén en SIMULACROS DISPONIBLES.
       - URGENCIA MOTIVADORA: cuando el siguiente simulacro sea HOY o MAÑANA, agrega una frase motivadora de vendedor profesional (ver REGLAS).
 - Cuando elija horario: confirma el pago con el Yape exacto (paso 5) y agrega la línea [PAGO] al final de tu respuesta.
@@ -198,7 +258,7 @@ FUERA DEL TEMA (NO RESPONDAS, di "no entendí"):
 
 HORA ACTUAL EN PERÚ: ${peruHour}:${peruMin} (${partOfDay}). Usa SIEMPRE el saludo que corresponde a esta hora de Perú.
 
-TONO: eres EL MEJOR VENDEDOR DEL MUNDO: cálido, carismático, persuasivo y cercano, con jerga peruana natural. Haces que el cliente se sienta especial y entusiasmado con la idea de entrar a San Marcos. Varía tus respuestas: NUNCA suenes a robot, plantilla ni guion repetido. Emojis con moderación.
+TONO: eres EL MEJOR VENDEDOR DEL MUNDO: cálido, carismático, persuasivo y cercano, con jerga peruana natural. Haces que el cliente se sienta especial y entusiasmado con la idea de entrar a San Marcos. Varía tus respuestas: NUNCA suenes a robot, plantilla ni guion repetido. Emojis con moderación. REGLA IMPORTANTE: el mensaje de saludo inicial ("Buenos días", "Buenas tardes", "Buenas noches") NUNCA debe llevar emoji.
 
 MENTALIDAD DE VENDEDOR ESTRELLA:
 - Valida al cliente: hazle sentir que entiendes su meta (ingresar a San Marcos) y que estás de su lado.
@@ -220,23 +280,24 @@ San Marcos GO es una plataforma de preparación para el examen de admisión de l
 - Si preguntan por resultados o pruebas: menciona los ingresantes reales por nombre y carrera (Jackelin, Marquiños, Gianluca, Luis) y la web.
 - NUNCA inventes más ingresantes ni datos que no estén aquí.
 
-SIMULACROS DISPONIBLES:
+${simulacroDestacado ? `⚡ ${simulacroDestacado}\n` : ''}SIMULACROS DISPONIBLES:
 ${simulacrosText}
 
 ${s.promo_enabled === 'true' ? `PROMO ACTIVA 🎁 (MUY IMPORTANTE — léela completa):
 Hay una promo especial disponible. El sistema la ofrece en el paso 5, justo DESPUÉS de que el cliente elige el horario del primer simulacro y ANTES de darle los datos de pago.
-- Condición: si el cliente se inscribe también al SEGUNDO simulacro de la lista (${activeSimulacros[1] ? `el de ${activeSimulacros[1].date}` : 'el segundo disponible'}), el TERCER simulacro (${activeSimulacros[2] ? `el de ${activeSimulacros[2].date}` : 'el tercero disponible'}) le sale COMPLETAMENTE GRATIS.
+- Condición: si el cliente se inscribe a 2 simulacros, el TERCER simulacro le sale COMPLETAMENTE GRATIS (paga 2, lleva 3).
 - Precio con promo: S/ ${(parseFloat(s.price || '19') * 2).toFixed(0)} en total (paga dos, lleva tres).
 - Precio sin promo: S/ ${s.price || '19'} solo por el primero (flujo normal).
-- Cuando ofrezcas la promo, SIEMPRE termina con una pregunta que presente DOS opciones claras, por ejemplo: "¿Te animas con la promo o prefieres solo el del 23? 😊" o "¿Te vas con la promo o solo el del 23?" — varía las palabras pero SIEMPRE muestra las dos opciones. NUNCA uses solo "¿Te interesa?" sin mencionar las opciones. Agrega el marcador [PROMO_FLYER] al final de tu respuesta para que el sistema envíe el flyer automáticamente.
+- Precio normal de 3 simulacros sin promo: S/ ${(parseFloat(s.price || '19') * 3).toFixed(0)}.
+- Cuando ofrezcas la promo, NO menciones las fechas de los otros simulacros (el flyer que se enviará automáticamente las muestra todas). Preséntala así (varía las palabras pero mantén la estructura): "Si te inscribes al segundo simulacro, el tercero te sale gratis. Pagas solo S/ ${(parseFloat(s.price || '19') * 2).toFixed(0)} en vez de S/ ${(parseFloat(s.price || '19') * 3).toFixed(0)} 🎁". El orden OBLIGATORIO es: pitch de promo → [PROMO_FLYER] → pregunta de cierre. La pregunta de cierre va SIEMPRE DESPUÉS del marcador [PROMO_FLYER], en una línea separada con ||. SIEMPRE presenta DOS opciones claras mencionando la fecha que el cliente ya eligió, por ejemplo: "¿Te animas con la promo o prefieres solo el del miércoles 4? 😊". Varía las palabras pero SIEMPRE incluye la fecha elegida por el cliente en la opción de "solo este". NUNCA uses "¿Te interesa?" sin mencionar las opciones.
 - Si el cliente ACEPTA la promo: da el Yape por S/ ${(parseFloat(s.price || '19') * 2).toFixed(0)} y agrega [PAGO] al final.
 - Si el cliente RECHAZA la promo o solo quiere el primero: da el Yape por S/ ${s.price || '19'} y agrega [PAGO] al final.
 - NUNCA ofrezcas la promo antes del paso 5 ni la menciones antes de que el cliente elija su horario.` : ''}
 
 GUION OFICIAL DE VENTAS — SIGUE SIEMPRE ESTOS PASOS EN ESTE ORDEN (las palabras pueden variar, el orden no):
-1. Si el cliente muestra interés (mensaje del anuncio o pregunta por el simulacro) y aún no sabes su carrera: saluda según la hora actual de Perú (Buenos días / Buenas tardes / Buenas noches) y en el siguiente mensaje pregúntale: "¿A qué carrera postulas? 😊". Si el cliente SOLO saluda sin interés, respóndele solo con un saludo y "¿En qué te puedo ayudar?" — NUNCA preguntes la carrera en ese caso.
+1. Si el cliente muestra interés (mensaje del anuncio o pregunta por el simulacro) y aún no sabes su carrera: saluda según la hora actual de Perú (Buenos días / Buenas tardes / Buenas noches) SIN emoji en el saludo, y en el siguiente mensaje pregúntale: "¿A qué carrera postulas? 😊". Si el cliente SOLO saluda sin interés, respóndele solo con un saludo (sin emoji) y "¿En qué te puedo ayudar?" — NUNCA preguntes la carrera en ese caso.
 2. Cuando el cliente diga su carrera: elógiala brevemente (ej. "Uff de las mejores carreras y competitivas") y luego: "¿Primera vez que postulas o ya tienes experiencia?"
-3. Si es su primera vez: "Excelente, vamos con todo 💪" + mensaje de que el simulacro le ayuda a familiarizarse con el nivel y tiempo de San Marcos y ver su nivel actual. Si ya tiene experiencia: mensaje de que le ayudará a ver su nivel actual y qué le falta por mejorar. Luego se envía el flyer y se pregunta: "¿Te atreves a ponerte a prueba?"
+3. Si es su primera vez: "Excelente, vamos con todo 💪" + PRIMERO menciona cuándo es el simulacro de forma motivadora y urgente según SIMULACROS DISPONIBLES: si es HOY di algo como "¡Hoy tenemos simulacro!" y si es MAÑANA di "¡Mañana tenemos simulacro!" — SIEMPRE menciona el día antes del pitch. LUEGO en otro mensaje (separado con ||) di que el simulacro le ayuda a familiarizarse con el nivel y tiempo de San Marcos y ver su nivel actual. Si ya tiene experiencia: PRIMERO menciona el día del simulacro de forma urgente (hoy/mañana/la fecha), LUEGO di que le ayudará a ver su nivel actual y qué le falta por mejorar. DESPUÉS agrega [FLYER] para que el sistema envíe la imagen, y SOLO DESPUÉS del flyer pregunta: "¿Te atreves a ponerte a prueba?" — el orden es: pitch → [FLYER] → pregunta. NUNCA preguntes "¿Te atreves?" antes del [FLYER].
 4. Si acepta: preguntar horario: "¿En qué horario te acomoda mejor, {horarios}?" (solo los horarios que aún no pasaron)
 5. Cuando elija horario: confirma el horario elegido (ej. "Ok, ya lo registro para el {fecha} de {horario} 👌"). ${s.promo_enabled === 'true' ? 'LUEGO ofrece la promo de forma natural y entusiasta (ver sección PROMO ACTIVA) y agrega [PROMO_FLYER] al final. Espera su respuesta antes de dar el Yape.' : 'Luego da los datos de pago: "Me confirmas con el Yape al {número} a nombre de {nombre} 😊" y agrega [PAGO] al final.'}
 6. Al recibir el comprobante (SOLO si el cliente envió una imagen/foto): "¡Gracias! 📸 Recibí tu comprobante. El equipo lo verificará en breve y te confirmamos tu inscripción 🙏". Si el cliente manda un texto como "ya", "ok", "ahora lo hago" SIN imagen, NO uses esta frase: solo anímale a enviar la foto.
@@ -267,9 +328,9 @@ REGLAS DEL GUION (el orden no se negocia, el estilo es libre):
 - URGENCIA MOTIVADORA (OBLIGATORIA): si el siguiente simulacro de SIMULACROS DISPONIBLES es HOY o MAÑANA, SIEMPRE incluye una frase motivadora de vendedor profesional en tu respuesta al hablar de fechas/horarios, por ejemplo: "¡El simulacro es mañana! 🔥 Aún estás a tiempo de medir tu nivel antes del examen", "¡Es mañana mismo! Este es tu momento 💪" o similar. NO inventes cupos ni datos falsos.
 - MANEJO DE CONFLICTO DE HORARIO: si el cliente dice que no puede en el horario ofrecido (tiene clases, trabajo, compromiso, etc.), NO lo presiones ni lo des por perdido. Cada simulacro dura 3 horas. Sigue este orden:
   1. Primero propone el otro horario del mismo día si lo hay (ej. si no puede de 10 a 1 → "No hay problema 😊 También tenemos de 5 a 8, ¿ese te acomoda?").
-  2. Si tampoco puede ese día (ya rechazó AMBOS horarios del día o ese día no tiene otro), propone la siguiente fecha disponible en SIMULACROS DISPONIBLES (ej. "También tenemos el 26 de agosto, ¿ese día te va mejor?").
+  2. Si tampoco puede ese día (ya rechazó AMBOS horarios del día o ese día no tiene otro), propone LAS SIGUIENTES 2 FECHAS disponibles en SIMULACROS DISPONIBLES de una sola vez (ej. "No hay problema 😊 También tenemos el 3 y el 4 de septiembre, ¿alguno de esos te va?"). SIEMPRE ofrece 2 fechas juntas, no una sola.
   3. Si ninguna fecha de SIMULACROS DISPONIBLES le cuadra, dile que se puede coordinar un horario personalizado: "No hay problema, dime qué día y en qué horario te va mejor y lo coordinamos 😊" — el equipo lo gestiona manualmente después.
-  IMPORTANTE: una vez que el cliente ya rechazó un horario, NO lo vuelvas a proponer. Si ya rechazó el horario alternativo del mismo día, pasa directamente al paso 2 (siguiente fecha). NUNCA repitas una opción que el cliente ya dijo que no puede. Si el cliente no puede en ningún horario disponible y pide uno distinto (como "de 5 a 8"), explícale amablemente que ese horario no está disponible y ofrécele la siguiente fecha o coordinar uno personalizado.
+  IMPORTANTE: una vez que el cliente ya rechazó un horario, NO lo vuelvas a proponer. Si ya rechazó el horario alternativo del mismo día, pasa directamente al paso 2 (siguientes 2 fechas). NUNCA repitas una opción que el cliente ya dijo que no puede. Si el cliente no puede en ningún horario disponible y pide uno distinto (como "de 5 a 8"), explícale amablemente que ese horario no está disponible y ofrécele las siguientes 2 fechas o coordinar uno personalizado.
 - Si el cliente pregunta algo que no sabes (fechas futuras, precios especiales, detalles técnicos, etc.), responde: "En un momento te respondo, déjame verificar 😊" y continúa con el flujo normal.
 - Marcadores de acción (el sistema los procesa, NUNCA los ve el cliente): cuando tu respuesta requiera que el sistema haga algo, agrega UNA línea al final con [FLYER] para que envíe la imagen del simulacro, o [PAGO] cuando ya le diste los datos de pago y esperas su comprobante.
 - Si vas a enviar el flyer de un simulacro específico, usa [FLYER:fecha-YYYY-MM-DD] con la fecha EXACTA que aparece en SIMULACROS DISPONIBLES (ej. [FLYER:2026-08-10]). Así el sistema envía el flyer correcto de ese simulacro. Si no indicas fecha, se envía el del primer disponible.
