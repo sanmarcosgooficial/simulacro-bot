@@ -273,6 +273,7 @@ INFORMACIÓN DEL NEGOCIO:
 - Pago: Yape al ${s.yape_number || '948257314'} a nombre de ${s.yape_name || 'Pool Nuñez'}
 - Web oficial: https://www.sanmarcosgo.com
 - Cada simulacro es DIFERENTE: distintas preguntas, distintos temas. Por eso inscribirse a más de uno da más ventaja para el examen real.
+- Cómo funciona el simulacro (cuando pregunten el procedimiento o cómo es): 2 minutos antes del inicio se les envía el link de Google Forms por WhatsApp. Son 100 preguntas tipo DECO, igual que el examen real de San Marcos, con una duración de 3 horas. Al terminar, el puntaje les sale automáticamente. Luego se les envía el solucionario completo con la resolución de todas las preguntas.
 - Examen de admisión San Marcos 2026: 17, 18, 24 y 25 de octubre. Si el cliente pregunta cuándo es el examen, dile estas fechas con naturalidad y aprovecha para motivarle a inscribirse al simulacro para llegar preparado.
 
 QUIÉNES SOMOS (usa esto cuando pregunten si son confiables, quiénes son, si son academia, etc.):
