@@ -341,7 +341,16 @@ export class WebhooksService {
         tLower.includes('quiero mas informacion') ||
         tLower.includes('quiero más información');
 
-      // Sin filtro: el bot responde a cualquier mensaje, venga del anuncio o directo al número.
+      // Si es conversación nueva (stage NUEVA) y no viene del anuncio, verificar que
+      // el mensaje tenga relación con el simulacro antes de responder.
+      // Si habla de otro tema (app, otra cosa), ignorar para no interferir.
+      if (stage === ConversationStage.NUEVA && !isAdMessage) {
+        const esSimulacro = /simulacro|san marcos|postul|carrera|examen|admis|inscri|horario|precio|costo|virtual|ingres|prepar|cuanto|deco|yape|pagar|fecha|hola|buenas|información|info/i.test(combinedText);
+        if (!esSimulacro) {
+          this.logger.log(`[FILTRO] Mensaje ignorado de ${phone} (no relacionado al simulacro): "${combinedText.substring(0, 60)}"`);
+          return;
+        }
+      }
 
       // Si llega el mensaje del anuncio con la conversación estancada en el inicio
       // (etapa SALUDADA/CON_CARRERA sin avanzar), reiniciamos el flujo para empezar
