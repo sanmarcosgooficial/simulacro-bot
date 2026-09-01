@@ -297,17 +297,7 @@ export class WebhooksService {
         return;
       }
 
-      // Si está esperando pago y el cliente manda TEXTO (no imagen), anímale a enviar la foto
-      if (effectiveMessageType !== 'image' && isPaymentStage) {
-        const urgencyReplies = [
-          'Quedo atento a tu comprobante 👀 Cuando hagas el Yape me mandas la captura 😊',
-          'Dale, en cuanto hagas el Yape me mandas la foto del comprobante 📸',
-          'Perfecto, mándame la captura del Yape cuando lo hagas 😊',
-        ];
-        const reply = urgencyReplies[Math.floor(Math.random() * urgencyReplies.length)];
-        await this.sendAndSaveReply(conversation.id, phone, reply);
-        return;
-      }
+
 
       // ── MÁQUINA DE ESTADOS ────────────────────────────────────────────────
       const history = await this.conversations.getChatHistory(conversation.id, 40);
