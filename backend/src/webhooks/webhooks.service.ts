@@ -248,8 +248,9 @@ export class WebhooksService {
         contactName: profileName || contact.name,
       });
 
-      // 7. Verificar si el agente está pausado
-      if (conversation.isAgentPaused) {
+      // 7. Verificar si el agente está pausado (releer de BD para tener el valor más fresco)
+      const freshConvPause = await this.conversations.findByPhone(phone);
+      if (freshConvPause?.isAgentPaused || conversation.isAgentPaused) {
         this.logger.log(`Agente pausado para ${phone}, no se responde automáticamente`);
         return;
       }
