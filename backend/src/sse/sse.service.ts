@@ -39,4 +39,9 @@ export class SseService {
   emitNewConversation(conversation: any) {
     this.emit('new_conversation', conversation);
   }
+
+  // Evento: conversación actualizada (ej. bot pausado/reanudado)
+  emitConversationUpdated(conversation: any) {
+    this.emit('conversation_updated', conversation);
+  }
 }

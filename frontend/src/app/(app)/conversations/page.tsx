@@ -77,6 +77,13 @@ export default function ConversationsPage() {
         loadMessages(selectedConv.id);
       }
     });
+    es.addEventListener('conversation_updated', (e: any) => {
+      const updated = JSON.parse(e.data);
+      fetchConversations();
+      if (selectedConv && updated.id === selectedConv.id) {
+        setSelectedConv((prev: any) => prev ? { ...prev, ...updated } : prev);
+      }
+    });
     return () => es.close();
   }, [fetchConversations, selectedConv]);
 
