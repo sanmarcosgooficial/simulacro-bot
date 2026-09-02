@@ -478,20 +478,9 @@ export class WebhooksService {
           }
 
           // [PROMO_FLYER] → enviar el flyer de la promo (las 3 fechas).
-          // Va DESPUÉS del texto de la IA, nunca junto al flyer normal.
           if (parsed.promoFlyer) {
             await new Promise((r) => setTimeout(r, 1000));
             await this.sendPromoFlyer(phone);
-            // Siempre enviamos la pregunta de cierre después del flyer de promo
-            await new Promise((r) => setTimeout(r, 1000));
-            // Detectar la fecha elegida para personalizar la pregunta
-            const fechaElegida = this.detectMentionedDate(aiReply, activeSimulacros);
-            const simElegido = fechaElegida ? activeSimulacros.find(s => s.date === fechaElegida) : null;
-            const diasSemana = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
-            const labelFecha = simElegido
-              ? `el ${diasSemana[new Date(simElegido.date + 'T12:00:00Z').getUTCDay()]} ${parseInt(simElegido.date.split('-')[2])}`
-              : 'este';
-            await this.sendAndSaveReply(conversation.id, phone, `¿Te animas con la promo o prefieres solo ${labelFecha}? 😊`);
           }
 
           // Texto que va DESPUÉS del flyer (ej. "¿Te atreves a ponerte a prueba?")
