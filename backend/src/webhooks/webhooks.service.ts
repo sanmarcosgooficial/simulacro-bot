@@ -254,6 +254,11 @@ export class WebhooksService {
         this.logger.log(`Agente pausado para ${phone}, no se responde automáticamente`);
         return;
       }
+      // Si el cliente ya está inscrito, no responder bajo ninguna circunstancia
+      if (freshConvPause?.stage === ConversationStage.INSCRITO) {
+        this.logger.log(`Cliente inscrito ${phone}, bot silenciado`);
+        return;
+      }
 
       // 8. Verificar si el agente está habilitado globalmente
       const agentEnabled = await this.settings.get('agent_enabled');
