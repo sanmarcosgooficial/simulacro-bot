@@ -428,6 +428,20 @@ export class WebhooksService {
 
           // Marcadores de acción: [FLYER] envía la imagen, [PAGO] activa la espera del comprobante
           const parsed = this.parseMarkers(aiReply);
+
+          // GUARDIA CRÍTICA: si la IA dice que recibió el comprobante sin que haya llegado
+          // una imagen real, interceptamos y pedimos la foto. Esto nunca debe llegar al cliente.
+          const fakeConfirmation = /recib[íi]\s*(tu\s*)?comprobante|inscripci[oó]n\s*confirmada|equipo lo verificar[áa]/i.test(parsed.textBefore || '');
+          if (fakeConfirmation && effectiveMessageType !== 'image') {
+            const replies = [
+              'Quedo atento 👀 Mándame la captura del Yape cuando lo hagas 📸',
+              'Dale, en cuanto yapees me mandas la foto del comprobante 😊',
+              'Perfecto, cuando hagas el Yape me mandas la captura y te confirmo 🙌',
+            ];
+            await this.sendAndSaveReply(conversation.id, phone, replies[Math.floor(Math.random() * replies.length)]);
+            break;
+          }
+
           if (parsed.textBefore) await this.sendSplitReply(conversation.id, phone, parsed.textBefore);
 
           // El flyer normal solo se envía si el cliente AÚN NO llegó a CON_EXPERIENCIA.
