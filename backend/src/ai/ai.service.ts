@@ -91,54 +91,56 @@ export class AiService implements OnModuleInit {
         });
 
       // ── Lógica del simulacro a DESTACAR ──────────────────────────────────────
-      // Lunes a viernes: siempre promocionar el de MAÑANA (o el siguiente disponible
-      // si mañana ya no tiene horarios o no existe).
-      // Sábado y domingo: promocionar el de HOY si aún tiene horarios; si no, el de mañana.
-      let simADestacado: any = null;
-      let labelDestacado = '';
+      // Lunes a viernes: si hay simulacro HOY con horarios disponibles, promocionar
+      // HOY Y MAÑANA juntos. Si no hay hoy, solo mañana.
+      // Sábado y domingo: promocionar HOY si hay horarios; si no, mañana.
+      const simHoy = activeSimulacros.find((s) => s.date === todayStr);
+      const simMañana = activeSimulacros.find((s) => s.date === tomorrowStr);
+      const hayHoyDisponible = simHoy && getAvailableSchedules(simHoy, true).length > 0;
 
-      if (isWeekend) {
-        // Sábado/domingo: busca primero el simulacro de HOY con horarios disponibles
-        const simHoy = activeSimulacros.find((s) => s.date === todayStr);
-        if (simHoy && getAvailableSchedules(simHoy, true).length > 0) {
-          simADestacado = simHoy;
-          labelDestacado = `hoy, ${fmtDate(todayStr)}`;
-        }
+      let simulacrosDestacados: { sim: any; label: string }[] = [];
+
+      if (!isWeekend && hayHoyDisponible) {
+        // Lunes-viernes con simulacro hoy: promover HOY + MAÑANA
+        simulacrosDestacados.push({ sim: simHoy, label: `hoy, ${fmtDate(todayStr)}` });
+        if (simMañana) simulacrosDestacados.push({ sim: simMañana, label: `mañana, ${fmtDate(tomorrowStr)}` });
+      } else if (isWeekend && hayHoyDisponible) {
+        // Fin de semana con simulacro hoy
+        simulacrosDestacados.push({ sim: simHoy, label: `hoy, ${fmtDate(todayStr)}` });
+      } else if (simMañana) {
+        // No hay hoy o ya pasaron horarios: solo mañana
+        simulacrosDestacados.push({ sim: simMañana, label: `mañana, ${fmtDate(tomorrowStr)}` });
+      } else {
+        // Ninguno hoy ni mañana: el próximo disponible
+        const proximo = activeSimulacros.find((s) => s.date > todayStr);
+        if (proximo) simulacrosDestacados.push({ sim: proximo, label: `el ${fmtDate(proximo.date)}` });
       }
 
-      if (!simADestacado) {
-        // Lunes-viernes siempre, o sábado/domingo cuando hoy ya no hay horarios:
-        // busca el simulacro de MAÑANA
-        const simMañana = activeSimulacros.find((s) => s.date === tomorrowStr);
-        if (simMañana) {
-          simADestacado = simMañana;
-          labelDestacado = `mañana, ${fmtDate(tomorrowStr)}`;
-        }
-      }
+      if (simulacrosDestacados.length > 0) {
+        const detalles = simulacrosDestacados.map(({ sim, label }) => {
+          const isToday = sim.date === todayStr;
+          const avail = getAvailableSchedules(sim, isToday);
+          const horarios = avail.length
+            ? avail.map((h: string) => {
+                const start = parseInt(h.split(' - ')[0]?.split(':')[0]);
+                const end = parseInt(h.split(' - ')[1]?.split(':')[0]);
+                return `de ${fmt12(start)} a ${fmt12(end)}`;
+              }).join(' o ')
+            : (sim.schedules || []).map((h: string) => {
+                const start = parseInt(h.split(' - ')[0]?.split(':')[0]);
+                const end = parseInt(h.split(' - ')[1]?.split(':')[0]);
+                return `de ${fmt12(start)} a ${fmt12(end)}`;
+              }).join(' o ');
+          return `"${label}" [fecha: ${sim.date}], horarios: ${horarios}`;
+        }).join(' | ');
 
-      if (!simADestacado) {
-        // Ni hoy ni mañana: usa el próximo disponible
-        simADestacado = activeSimulacros.find((s) => s.date > todayStr) || null;
-        if (simADestacado) {
-          labelDestacado = `el ${fmtDate(simADestacado.date)}`;
-        }
-      }
+        const frasePrincipal = simulacrosDestacados.length > 1
+          ? `¡Tenemos simulacro ${simulacrosDestacados[0].label.replace('hoy, ', 'hoy ')} y ${simulacrosDestacados[1].label.replace('mañana, ', 'mañana ')}! 🔥`
+          : simulacrosDestacados[0].label.startsWith('hoy') ? '¡Hoy tenemos simulacro! 🔥'
+          : simulacrosDestacados[0].label.startsWith('mañana') ? '¡Mañana tenemos simulacro! 🔥'
+          : `¡${simulacrosDestacados[0].label.charAt(0).toUpperCase() + simulacrosDestacados[0].label.slice(1)} tenemos simulacro! 🔥`;
 
-      if (simADestacado) {
-        const isToday = simADestacado.date === todayStr;
-        const avail = getAvailableSchedules(simADestacado, isToday);
-        const horariosDestacado = avail.length
-          ? avail.map((h: string) => {
-              const start = parseInt(h.split(' - ')[0]?.split(':')[0]);
-              const end = parseInt(h.split(' - ')[1]?.split(':')[0]);
-              return `de ${fmt12(start)} a ${fmt12(end)}`;
-            }).join(' o ')
-          : (simADestacado.schedules || []).map((h: string) => {
-              const start = parseInt(h.split(' - ')[0]?.split(':')[0]);
-              const end = parseInt(h.split(' - ')[1]?.split(':')[0]);
-              return `de ${fmt12(start)} a ${fmt12(end)}`;
-            }).join(' o ');
-        simulacroDestacado = `SIMULACRO A PROMOCIONAR AHORA: "${labelDestacado}" [fecha: ${simADestacado.date}], horarios disponibles: ${horariosDestacado}. Cuando presentes el simulacro en el paso 3, di SIEMPRE "${labelDestacado.startsWith('hoy') ? '¡Hoy tenemos simulacro!' : labelDestacado.startsWith('mañana') ? '¡Mañana tenemos simulacro!' : `¡El ${fmtDate(simADestacado.date)} tenemos simulacro!`}" al inicio de tu mensaje de presentación. Este es el simulacro que debes ofrecer primero.`;
+        simulacroDestacado = `SIMULACROS A PROMOCIONAR AHORA: ${detalles}. Cuando presentes el simulacro en el paso 3, di SIEMPRE "${frasePrincipal}" al inicio. ${simulacrosDestacados.length > 1 ? 'Ofrece AMBAS fechas al cliente para que elija la que más le acomoda.' : 'Este es el simulacro que debes ofrecer.'}`;
       }
       // ─────────────────────────────────────────────────────────────────────────
 
