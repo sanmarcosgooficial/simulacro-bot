@@ -543,7 +543,20 @@ export class WebhooksService {
     const normalize = (s: string) =>
       s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const normalized = normalize(text);
-    for (const sim of simulacros) {
+    // Filtrar simulacros que aún tienen horarios disponibles (no pasados)
+    const now = new Date(Date.now() - 5 * 3600 * 1000);
+    const todayStr = now.toISOString().split('T')[0];
+    const currentHour = now.getUTCHours() + now.getUTCMinutes() / 60;
+    const validSims = simulacros.filter((sim) => {
+      if (sim.date > todayStr) return true;
+      if (sim.date < todayStr) return false;
+      // Es hoy: verificar si tiene horarios disponibles
+      return (sim.schedules || []).some((h: string) => {
+        const startH = parseInt(h.split(' - ')[0]?.split(':')[0] || '0');
+        return startH > currentHour + (5 / 60);
+      });
+    });
+    for (const sim of validSims) {
       // Formato español ("10 de agosto") y formato ISO ("2026-08-10", que la IA
       // puede copiar tal cual de SIMULACROS DISPONIBLES).
       const labels = [this.dateInSpanish(sim.date), sim.date].filter(Boolean);
