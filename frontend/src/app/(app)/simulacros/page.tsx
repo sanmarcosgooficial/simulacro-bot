@@ -305,6 +305,14 @@ export default function SimulacrosPage() {
   const [promoSaved, setPromoSaved] = useState(false);
   const [promoFlyerError, setPromoFlyerError] = useState('');
 
+  // Testimonios
+  const [testimonialsEnabled, setTestimonialsEnabled] = useState(false);
+  const [testimonialsFile, setTestimonialsFile] = useState<File | null>(null);
+  const [testimonialsPreview, setTestimonialsPreview] = useState('');
+  const [uploadingTestimonials, setUploadingTestimonials] = useState(false);
+  const [testimonialsSaved, setTestimonialsSaved] = useState(false);
+  const [testimonialsError, setTestimonialsError] = useState('');
+
   const fetchSimulacros = useCallback(async () => {
     setLoading(true);
     try {
@@ -326,6 +334,11 @@ export default function SimulacrosPage() {
       if (d.promo_flyer_url) {
         const url = d.promo_flyer_url.startsWith('http') ? d.promo_flyer_url : `${API_BASE}${d.promo_flyer_url}`;
         setPromoFlyerPreview(url);
+      }
+      setTestimonialsEnabled(d.testimonials_enabled === 'true');
+      if (d.testimonials_url) {
+        const url = d.testimonials_url.startsWith('http') ? d.testimonials_url : `${API_BASE}${d.testimonials_url}`;
+        setTestimonialsPreview(url);
       }
     }).catch(() => {});
   }, [fetchSimulacros]);
@@ -525,6 +538,99 @@ export default function SimulacrosPage() {
             {promoFlyerError && <p className="text-xs text-red-500">{promoFlyerError}</p>}
             {promoFlyerPreview && !promoFlyerFile && !promoSaved && (
               <p className="text-xs text-gray-400">✓ Flyer configurado</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Testimonios ─────────────────────────────────────────── */}
+      <div className="mt-4 bg-white rounded-2xl border border-green-100 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+            <span className="text-green-500">💬</span>
+            Testimonios
+          </h2>
+          {/* Switch on/off */}
+          <button
+            type="button"
+            onClick={async () => {
+              const next = !testimonialsEnabled;
+              setTestimonialsEnabled(next);
+              await settingsApi.update({ testimonials_enabled: next ? 'true' : 'false' });
+            }}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+              testimonialsEnabled ? 'bg-green-500' : 'bg-gray-200'
+            }`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+              testimonialsEnabled ? 'translate-x-6' : 'translate-x-1'
+            }`} />
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mb-4">
+          Cuando esté activa, el bot enviará esta imagen justo después del flyer del simulacro como{' '}
+          <span className="font-medium text-gray-600">prueba social</span> para convencer al cliente de inscribirse.
+        </p>
+
+        <div className="flex items-start gap-4">
+          {/* Preview */}
+          <div className="w-28 h-28 rounded-xl border-2 border-dashed border-green-100 flex items-center justify-center overflow-hidden flex-shrink-0 bg-green-50">
+            {testimonialsPreview ? (
+              <img src={testimonialsPreview} alt="Testimonios" className="w-full h-full object-cover rounded-xl" />
+            ) : (
+              <ImagePlus size={24} className="text-green-200" />
+            )}
+          </div>
+
+          <div className="flex-1 space-y-2">
+            <p className="text-xs font-medium text-gray-700">Imagen con testimonios de alumnos</p>
+            <label className="flex items-center gap-2 px-3 py-2 bg-green-50 hover:bg-green-100 border border-green-100 rounded-xl cursor-pointer text-sm text-green-700 transition-colors w-fit">
+              <ImagePlus size={14} />
+              {testimonialsPreview ? 'Cambiar imagen' : 'Subir imagen'}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setTestimonialsFile(file);
+                  setTestimonialsPreview(URL.createObjectURL(file));
+                }}
+              />
+            </label>
+
+            {testimonialsFile && (
+              <button
+                type="button"
+                disabled={uploadingTestimonials}
+                onClick={async () => {
+                  if (!testimonialsFile) return;
+                  setUploadingTestimonials(true);
+                  setTestimonialsError('');
+                  setTestimonialsSaved(false);
+                  try {
+                    const res = await settingsApi.uploadTestimonials(testimonialsFile);
+                    setTestimonialsPreview(res.data.url);
+                    setTestimonialsFile(null);
+                    setTestimonialsSaved(true);
+                    setTimeout(() => setTestimonialsSaved(false), 4000);
+                  } catch (e: any) {
+                    setTestimonialsError('Error al subir: ' + e.message);
+                  } finally {
+                    setUploadingTestimonials(false);
+                  }
+                }}
+                className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-colors"
+              >
+                {uploadingTestimonials ? 'Subiendo...' : 'Guardar imagen'}
+              </button>
+            )}
+
+            {testimonialsSaved && <p className="text-xs text-green-600">✓ Imagen de testimonios guardada correctamente</p>}
+            {testimonialsError && <p className="text-xs text-red-500">{testimonialsError}</p>}
+            {testimonialsPreview && !testimonialsFile && !testimonialsSaved && (
+              <p className="text-xs text-gray-400">✓ Imagen configurada</p>
             )}
           </div>
         </div>

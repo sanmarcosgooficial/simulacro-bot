@@ -19,6 +19,8 @@ const DEFAULT_SETTINGS = [
   { key: 'welcome_message', value: '¡Hola! 👋 Soy el asistente de Simulacros San Marcos. ¿En qué te puedo ayudar?', description: 'Mensaje de bienvenida' },
   { key: 'promo_enabled', value: 'false', description: 'Activar promo: inscríbete al 2do simulacro y el 3ro es gratis' },
   { key: 'promo_flyer_url', value: '', description: 'URL del flyer de la promo (con las 3 fechas)' },
+  { key: 'testimonials_enabled', value: 'false', description: 'Enviar imagen de testimonios después del flyer' },
+  { key: 'testimonials_url', value: '', description: 'URL de la imagen de testimonios' },
 ];
 
 @Injectable()

@@ -397,6 +397,7 @@ export class WebhooksService {
               if (!parsed.promoFlyer && (parsed.flyer || flyerDate)) {
                 await new Promise((r) => setTimeout(r, 1000));
                 await this.sendFlyerForDate(phone, flyerDate);
+                await this.sendTestimonialsIfEnabled(phone);
                 if (!contact.career) {
                   await this.conversations.setStage(conversation.id, ConversationStage.SALUDADA);
                 }
@@ -478,6 +479,8 @@ export class WebhooksService {
           if (shouldSendFlyer || flyerForzado) {
             await new Promise((r) => setTimeout(r, 1000));
             await this.sendFlyerForDate(phone, flyerDate);
+            // Enviar imagen de testimonios justo después del flyer si está activa
+            await this.sendTestimonialsIfEnabled(phone);
             if (effectiveStage === ConversationStage.SALUDADA || effectiveStage === ConversationStage.CON_CARRERA) {
               await this.conversations.setStage(conversation.id, ConversationStage.CON_EXPERIENCIA);
             }
@@ -669,6 +672,27 @@ export class WebhooksService {
       }
     } else {
       this.logger.warn(`[FLYER] solicitado${flyerDate ? ` (fecha ${flyerDate})` : ''} pero no hay flyer configurado: sube el flyer del simulacro o define flyer_url en ajustes`);
+    }
+  }
+
+  // Enviar imagen de testimonios si está habilitada en ajustes
+  private async sendTestimonialsIfEnabled(phone: string): Promise<void> {
+    const enabled = await this.settings.get('testimonials_enabled');
+    if (enabled !== 'true') return;
+    const rawUrl = await this.settings.get('testimonials_url');
+    if (!rawUrl?.trim()) {
+      this.logger.warn('[TESTIMONIOS] habilitado pero no hay imagen configurada en ajustes');
+      return;
+    }
+    const publicUrl = this.config.get('BACKEND_PUBLIC_URL', '').replace(/\/$/, '');
+    const base = publicUrl || `http://localhost:${this.config.get('PORT', '3001')}`;
+    const url = rawUrl.startsWith('http') ? rawUrl : `${base}${rawUrl}`;
+    try {
+      await new Promise((r) => setTimeout(r, 800));
+      await this.ycloud.sendImageMessage(phone, url);
+      this.logger.log(`[TESTIMONIOS] Imagen enviada a ${phone}`);
+    } catch (e) {
+      this.logger.warn('[TESTIMONIOS] No se pudo enviar la imagen: ' + e.message);
     }
   }
 

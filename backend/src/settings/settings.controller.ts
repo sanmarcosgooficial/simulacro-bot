@@ -67,6 +67,27 @@ export class SettingsController {
     return { url, message: 'Flyer de promo subido correctamente' };
   }
 
+  // Subir imagen de testimonios
+  @Post('upload-testimonials')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(new BadRequestException('Solo se permiten imágenes'), false);
+        }
+        cb(null, true);
+      },
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async uploadTestimonials(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    const url = await this.r2.uploadFile(file, 'testimonials');
+    await this.settingsService.set('testimonials_url', url);
+    return { url, message: 'Imagen de testimonios subida correctamente' };
+  }
+
   // Subir flyer global
   @Post('upload-flyer')
   @UseGuards(JwtAuthGuard)
