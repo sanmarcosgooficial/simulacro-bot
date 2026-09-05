@@ -254,9 +254,19 @@ export class WebhooksService {
         this.logger.log(`Agente pausado para ${phone}, no se responde automáticamente`);
         return;
       }
-      // Si el cliente ya está inscrito, no responder bajo ninguna circunstancia
-      if (freshConvPause?.stage === ConversationStage.INSCRITO) {
+      // Si el cliente ya está inscrito, no responder bajo ninguna circunstancia.
+      // Doble check: stage en conversación Y status en contacto, por si uno
+      // se actualizó antes que el otro (race condition entre mensajes rápidos).
+      const freshContact = await this.contacts.findByPhone(phone);
+      if (
+        freshConvPause?.stage === ConversationStage.INSCRITO ||
+        freshContact?.status === ContactStatus.INSCRITO
+      ) {
         this.logger.log(`Cliente inscrito ${phone}, bot silenciado`);
+        // Asegurarse de que isAgentPaused quede en true también
+        if (!freshConvPause?.isAgentPaused && freshConvPause?.id) {
+          await this.conversations.toggleAgent(freshConvPause.id, true);
+        }
         return;
       }
 
